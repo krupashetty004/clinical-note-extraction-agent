@@ -109,23 +109,28 @@ These are acceptance targets, not measured results. Mark each target **Pass**, *
 
 # Part II — Technology Stack and Justification
 
-## 7. Proposed Stack
+## 7. Frontend, Backend, Database and Supporting Technologies
 
-All choices below are provisional. Exact versions and model IDs must be rechecked and tested after approval.
+The following stack is proposed for the local MVP. These are design choices, not implemented or approved components.
 
-| Layer | Proposed choice | Why it fits / alternative |
+| Layer | Proposed technology | Purpose and reason |
 |---|---|---|
-| Language | Python 3.12.x | Fits NLP, data handling, API calls and evaluation in one language; Node.js is possible but less direct for the planned NLP/evaluation work. Pin exact version after testing. |
-| Output schema | Pydantic 2.x | Validates required fields and types; additional logic must validate evidence, offsets and clinical meaning. |
-| Model API | Groq candidates, only if approved | Offers documented free-tier candidates and structured output; provider terms, model quality and account quotas must be checked first. |
-| Orchestration | Explicit Python agent loop | Makes tool choice, retries, reconciliation and escalation easy to inspect; avoids unnecessary framework complexity. |
-| Keyword retrieval | SQLite FTS5 or BM25, choose after testing | Efficient lexical matching against the supplied ICD-10 table; compare against a simpler keyword-only baseline. |
-| Semantic retrieval | ChromaDB + a compatible local embedding model (candidate: bge-small-en) | Can surface related descriptions when wording differs; similarity is not proof of clinical correctness. |
-| Local masking | Rules + spaCy NER | Rules detect predictable identifier patterns; NER can identify context-dependent names/dates/locations. Neither guarantees complete masking. |
-| Reviewer UI | Streamlit | Fast local UI for highlighting, flags, review controls, trace and export; a separate React app adds work for this single-reviewer MVP. |
-| Local storage / traces | SQLite or local files; structured JSON | Avoids a separate database server; traces must contain masked data or safe metadata only. |
-| Evaluation | Python scripts and automated tests | Makes metrics and challenge tests repeatable. |
-| Version control | Git + private GitHub | Tracks changes and supports the required private repository workflow. |
+| **Frontend / reviewer UI** | **Streamlit** | Local interface for showing the original note, evidence highlights, extracted fields, diagnosis-code candidates, flagged items, trace and accept/reject controls. It avoids a separate React frontend for this single-reviewer MVP. |
+| **Backend / application logic** | **Python 3.12.x** | Handles note processing, validation, retrieval, verification, decisions, JSON export and evaluation. Python is a direct fit for NLP and evaluation; pin the exact version after compatibility testing. |
+| **Agent orchestration** | **Explicit Python agent loop** | Chooses tool calls, inspects results, applies bounded retries, reconciles disagreement, and decides whether to accept, reject, abstain or escalate. A small explicit loop is easier to inspect than a large orchestration framework. |
+| **LLM / model API** | **Provisional Groq API candidates, subject to approval** | Provides hosted model inference and structured output. Provider terms, model quality, current availability and account-specific free-tier quotas must be checked before use. |
+| **Database / local persistence** | **SQLite and local files** | SQLite can store limited local review metadata and evaluation results; local files can hold necessary configuration and evaluation artifacts. No separate database server is proposed. Do not store protected information in traces or commit patient records to GitHub. |
+| **Keyword retrieval** | **SQLite FTS5 or BM25; choose one after testing** | Finds and ranks diagnosis candidates using words from the supplied ICD-10 table. Choose based on implementation simplicity and evaluation results. |
+| **Semantic retrieval / vector store** | **ChromaDB with a compatible local embedding model, candidate: bge-small-en** | Supports retrieval of conceptually related code descriptions when wording differs. This is a proposed option; similarity is not proof of clinical correctness. |
+| **Schema validation** | **Pydantic 2.x** | Checks required fields and value types. Additional checks are still needed for original offsets, evidence support and clinical meaning. |
+| **Local privacy processing** | **Rules plus spaCy NER** | Rules can detect predictable patterns; named-entity recognition can identify some context-dependent identifiers. Neither guarantees complete masking, so it must be tested. |
+| **Trace and logging** | **Structured JSON with masked data or safe metadata** | Records tool calls, outcomes, retries and decisions without exposing protected information. |
+| **Evaluation** | **Python scripts and automated tests** | Makes entity metrics, span checks, ICD-10 measures, challenge tests and latency/call measurements repeatable. |
+| **Version control** | **Git and private GitHub repository** | Tracks changes and supports the required private repository workflow. |
+
+**Layer summary:** Streamlit is the frontend; Python and the explicit agent loop form the backend/application logic; SQLite/local files provide local persistence; ChromaDB is a candidate vector store for semantic retrieval. The supplied ICD-10 table remains the source data for diagnosis-code candidates.
+
+Exact dependency versions and the final retrieval choice must be confirmed through compatibility checks and evaluation after approval.
 
 ## 8. Model Candidates and Constraints
 
