@@ -26,7 +26,7 @@
 | Schema validation | Pydantic 2.x | Validates required fields and data types. Schema validity alone does not prove clinical correctness. |
 | LLM API | Provisional Groq API candidates, subject to privacy review and approval | Offers current hosted model candidates with documented free-plan quotas. |
 | Agent orchestration | Explicit Python agent loop | Makes tool use, bounded retries, reconciliation, and escalation inspectable. |
-| Keyword retrieval | SQLite FTS5 or BM25; select one after testing | Retrieves diagnosis candidates by terms and ranks matches. |
+| Keyword retrieval | SQLite FTS5 with BM25 ranking | Uses FTS5 for full-text search over the supplied ICD-10 table and BM25 to rank matching descriptions by relevance. |
 | Semantic retrieval | ChromaDB with a compatible local embedding model, such as bge-small-en | Retrieves potentially related diagnosis descriptions when wording differs. |
 | Local privacy processing | Rule-based masking plus spaCy NER | Detects and masks likely identifiers before model calls. |
 | Reviewer interface | Streamlit | Provides evidence highlighting, accept/reject controls, flagged items, trace viewing, and JSON export locally. |
@@ -95,7 +95,7 @@ A small Python loop is preferred over a large orchestration framework because th
 
 Keyword retrieval is transparent and can find exact terms. Semantic retrieval may find relevant descriptions when the note uses different wording. The two approaches are complementary, but their combined value must be measured against a keyword-only comparison.
 
-SQLite FTS5 and BM25 are alternatives for the lexical part; choose one based on implementation simplicity and evaluation results. ChromaDB is a candidate vector store for embeddings. Similarity scores must not be treated as proof that a code is clinically correct.
+SQLite FTS5 provides full-text retrieval and its BM25 ranking function orders matches by relevance. Evaluate this lexical retrieval against a simpler keyword-only baseline, then measure whether semantic retrieval adds value. ChromaDB is a candidate vector store for embeddings. Similarity scores must not be treated as proof that a code is clinically correct.
 
 ### 4.5 Local privacy processing
 
@@ -124,7 +124,7 @@ Automated scripts provide repeatable entity metrics, span checks, ICD-10 measure
 | Core language | Python | Node.js | Direct fit for NLP and evaluation tooling |
 | Schema | Pydantic | Manual JSON validation | Reusable typed validation |
 | Orchestration | Explicit Python loop | Heavy agent framework | Easier to inspect and control |
-| Lexical retrieval | SQLite FTS5 or BM25 | Exact substring matching only | Better retrieval/ranking support |
+| Lexical retrieval | SQLite FTS5 with BM25 ranking | Exact substring matching only | Full-text retrieval with relevance ranking |
 | Retrieval approach | Keyword + semantic, subject to evaluation | Keyword-only | Potentially broader candidate retrieval |
 | UI | Streamlit | React frontend | Faster local MVP development |
 | Persistence | SQLite/local files | PostgreSQL service | No separate database server required |
