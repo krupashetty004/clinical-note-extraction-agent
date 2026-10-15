@@ -32,9 +32,9 @@ OCR/scanned notes, EHR/billing integration, cloud and multi-user deployment, mod
 - `/docs/questions-and-assumptions.md` — project questions, assumptions, and confirmed clarifications
 - `/docs/market-research.md` — commercial products, open-source tools, papers, and project-relevant findings
 - `/docs/solution-proposal.md` — proposed solution and scope
-- `/docs/architecture.md` — logical components, data flow, trust boundaries, and architecture diagram
-- `/docs/technology-stack.md` — technology candidates, justifications, and pending provider checks
-- `/docs/development-timeline.md` — milestones, post-approval schedule, and constraints
+- `/docs/architecture.md` — **combined submission document** containing the system architecture and Mermaid diagram, technology-stack justifications, and detailed development timeline
+- `/docs/technology-stack.md` — standalone supporting copy of the technology choices, justifications, and provider checks
+- `/docs/development-timeline.md` — standalone supporting copy of the milestones, post-approval schedule, and constraints
 - `/docs/evaluation-plan.md` — gold standard, metrics, acceptance thresholds, and challenge tests
 - `/docs/research-references.md` — working list of source references
 
