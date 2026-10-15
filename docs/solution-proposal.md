@@ -156,6 +156,18 @@ Acceptance thresholds must be reported as pass, fail, or not yet measured. This 
 - External clinical data sourcing.
 - Paid API keys and GPU-dependent infrastructure.
 
+### Possible future phase — options for discussion only
+
+The following items remain outside the current SOW/MVP and must not be implemented without written approval from Mirai Labs:
+
+- **OCR/document ingestion:** Support printed or scanned clinical PDFs/images; treat handwriting as a separate feasibility question. OCR would require recognition-quality checks, page/region provenance and human review for uncertain results.
+- **Input-quality checks:** Detect empty, truncated, duplicate or garbled notes before extraction.
+- **Review prioritization:** Sort unresolved items by calibrated uncertainty or contradiction risk; confidence must not replace evidence verification.
+- **Reviewer feedback and error analytics:** Record privacy-safe corrections and recurring error categories to guide a later improvement cycle, while keeping the final evaluation set independent.
+- **Resumable batch processing:** Track note-level progress, failures and quota use so an interrupted approved batch can safely resume.
+
+OCR is the main optional expansion to consider. If approved later, the schema may need page numbers and bounding boxes in addition to text offsets, and OCR accuracy must be evaluated separately. These options do not change the current exclusion of OCR, scanned/handwritten notes or other out-of-scope features.
+
 Any scope change must receive written agreement from Mirai Labs.
 
 ## 12. Decisions Pending Approval
