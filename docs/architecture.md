@@ -58,7 +58,27 @@ flowchart TD
     H -. escalation reason .-> T
 ```
 
-The orchestrator controls retries and decisions. A recoverable issue may return to the orchestrator only within the approved retry/time/call budget. Unresolved items go to rejection, abstention, or human review. A note may contain accepted items and flagged items together.
+### How to Read the Mermaid Diagram
+
+Follow the arrows from top to bottom. The boxes describe work the system does; the diamond shapes represent decisions.
+
+| Diagram step | What the system does | Example |
+|---|---|---|
+| Clinical note input | Receives a note from the approved Mirai Labs dataset or local reviewer input. | `Assessment: No evidence of pneumonia. Diagnosis: hypertension.` |
+| Validate and preserve original | Checks the input and keeps the exact original note for later evidence checks. | The original sentence is not replaced by a rewritten sentence. |
+| Local masking + offset mapping | Masks identifying information locally before an approved external call and tracks how positions map to the original note. | If a name is replaced with `[NAME]`, the system must still know where cited evidence lies in the original note. |
+| Agent orchestrator | Chooses the next tool/pass and manages retries within time/call limits. | It calls extraction first, then retrieval and verification as required. |
+| Structured extraction | Proposes entities, statuses, attributes, and evidence spans. | It records pneumonia as a negated mention, not a present diagnosis. |
+| Schema + span validation | Checks required fields and whether the cited offsets point to the stated evidence in the original note. | A span outside the note or pointing to unrelated text fails validation. |
+| ICD-10 retrieval | Searches the supplied code table for diagnosis candidates only. | It ranks candidates for hypertension; it does not assign a procedure code. |
+| Independent verification | Checks evidence, status, contradictions, and possible omissions independently. | It checks that “No evidence of pneumonia” is not misread as current pneumonia. |
+| “Checks pass?” decision | Determines whether an item meets the evidence and verification rules. | A supported item can proceed; a failure is not automatically accepted. |
+| “Recoverable and budget remains?” decision | Retries only when a problem may be fixed and the approved retry budget is not exhausted. Otherwise the system rejects, abstains, or flags for review. | A malformed response may be retried once if allowed; unresolved disagreement goes to review. |
+| Reviewer UI and JSON export | Shows evidence and decisions, lets the reviewer accept/reject, and exports reviewed output. | The reviewer can inspect the source text and why an item was flagged. |
+| Evaluation harness | Compares results with labelled reference data and the naive baseline. | It calculates metrics; the diagram does not imply that targets have already been achieved. |
+| Dashed arrows to privacy-safe trace | Record process activity and decision outcomes, not a separate inference step. | Log which pass ran and its result without saving protected note text. |
+
+The orchestrator controls retries and decisions. A note may contain verified items and flagged items together; the system need not treat the entire note as correct just because one item passes.
 
 ## 4. Processing and Acceptance Rules
 
@@ -71,7 +91,70 @@ The orchestrator controls retries and decisions. A recoverable issue may return 
 7. **Trace safely.** Log tool calls, retry reasons and decisions without exposing protected information.
 8. **Review and export.** Allow the reviewer to accept/reject items, inspect reasons and export reviewed JSON.
 
-**Example:** “No evidence of pneumonia” contains the word *pneumonia*, but it does not support extracting pneumonia as a confirmed current diagnosis. Text presence alone is not evidence that an interpretation is correct.
+### Worked Example: Source Note → System Actions → Example Output
+
+**Fictional source note (for explanation only):**
+
+```text
+Assessment: No evidence of pneumonia. Diagnosis: hypertension. Medication: amlodipine 5 mg orally once daily. Allergy: penicillin.
+```
+
+This shows how the same note moves through the system:
+
+| Source information | System action | Expected handling |
+|---|---|---|
+| “No evidence of pneumonia” | Extract the diagnosis mention, check negation and verify its evidence. | Preserve the mention as `negated`; do not treat pneumonia as a present diagnosis. |
+| “hypertension” | Extract the diagnosis, then search the supplied ICD-10 table. | Validate the source span and rank supported code candidates; do not invent a code. |
+| “amlodipine 5 mg orally once daily” | Extract medication name, dose, route and frequency. | Keep only attributes stated in the note and cite the original text. |
+| “penicillin” after “Allergy:” | Extract allergy information and verify the source context. | Record it as a documented allergy mention; do not infer extra details. |
+
+**Illustrative structured output** (not actual model output and not yet the final agreed schema). For this example, offsets are zero-based, with the start included and the end excluded:
+
+```json
+{
+  "note_id": "example-001",
+  "items": [
+    {
+      "category": "diagnosis",
+      "entity": "pneumonia",
+      "status": "negated",
+      "evidence_text": "No evidence of pneumonia",
+      "start_offset": 12,
+      "end_offset": 36
+    },
+    {
+      "category": "diagnosis",
+      "entity": "hypertension",
+      "status": "present",
+      "evidence_text": "hypertension",
+      "start_offset": 49,
+      "end_offset": 61
+    },
+    {
+      "category": "medication",
+      "entity": "amlodipine",
+      "dose": "5 mg",
+      "route": "oral",
+      "frequency": "once daily",
+      "evidence_text": "amlodipine 5 mg orally once daily",
+      "start_offset": 75,
+      "end_offset": 108
+    },
+    {
+      "category": "allergy",
+      "entity": "penicillin",
+      "status": "documented",
+      "evidence_text": "penicillin",
+      "start_offset": 119,
+      "end_offset": 129
+    }
+  ]
+}
+```
+
+The offsets above point to the exact substrings in the fictional source note. In the actual implementation, the offset convention and field names must be finalized in the approved schema. ICD-10 codes are intentionally not shown here because candidates must come from the supplied reference table and then be verified.
+
+**Important:** “Negated” does not necessarily mean the mention must be erased. The system may preserve the negated mention with its status so a reviewer can understand the context; it must not misreport it as a current positive diagnosis.
 
 The note text is untrusted input: embedded instructions must not override system rules or change tool permissions. On provider failure or a rate limit, fail safely or defer processing; do not fabricate results or silently switch to an unapproved provider.
 
