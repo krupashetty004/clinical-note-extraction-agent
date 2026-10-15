@@ -190,6 +190,20 @@ These are acceptance targets, not measured results. Mark each target **Pass**, *
 - Do not reduce the required gold-standard or challenge-set sizes silently. Raise timeline, privacy, data-access or quota blockers with Mirai Labs.
 - The MVP excludes OCR/scanned or handwritten notes, procedure-code assignment, EHR/billing integration, cloud or multi-user deployment, fine-tuning, external clinical-note sourcing, paid API keys and GPU-dependent infrastructure.
 
+### Possible future extensions — not part of this MVP
+
+These are options for a later phase only. They do not change the current SOW scope and require written agreement from Mirai Labs before work begins.
+
+| Option | Potential benefit | Additional controls needed |
+|---|---|---|
+| OCR and document ingestion | Accept scanned clinical PDFs/images; handwriting support would need separate feasibility testing because recognition errors can be substantial. | Local processing where required, OCR confidence checks, page/region provenance, text-quality validation, and human review for uncertain output. Character offsets alone may not be enough; the output schema may also need page numbers and bounding boxes. |
+| Input-quality checks | Detect empty, truncated, duplicate or garbled notes before extraction. | Define validation rules and report rejected inputs without losing the original source. |
+| Review prioritization | Put low-confidence, contradictory or poorly supported items at the top of the review queue. | Calibrate confidence against labelled data; do not treat model confidence as proof of correctness. |
+| Reviewer feedback and error analytics | Record reviewer corrections and recurring failure types to guide later improvements. | Keep feedback privacy-safe and separate from the independent final test set; no automatic prompt tuning or fine-tuning without approval. |
+| Resumable batch processing | Resume interrupted runs and report progress when processing large approved datasets. | Track per-note status, retries and quota use without exposing protected note text. |
+
+**Recommendation:** Keep OCR as a documented future option, not an MVP feature. Start with printed/scanned documents before considering handwriting. If Mirai Labs later approves OCR, add a separate input-quality and OCR evaluation set, retain page-level evidence, and route low-confidence OCR results to human review.
+
 # Part II — Technology Stack and Justification
 
 ## 7. Frontend, Backend, Database and Supporting Technologies
