@@ -160,7 +160,7 @@ A starting ranking can be evaluated as a normalized blend of semantic similarity
 | Hosting | Render Free web service | Public demo URL; may sleep/cold-start, so show loading states and validate its current free limits. |
 | Relational database | Neon Free PostgreSQL | Persistent hosted relational store for users, patients, encounters, documents, notes, review records, and audit metadata. |
 | Vector retrieval | PostgreSQL pgvector on Neon | Store embeddings and run semantic search without a separate vector database service. |
-| File storage | Neon Object Storage candidate (S3-compatible) | Can separate uploads from application filesystem; private access and current free-plan status must be proven before selection. Supabase Storage Free is a fallback candidate if the primary choice fails tests. |
+| File storage | Neon Object Storage (S3-compatible) | Stores original text files, PDFs, images, and audio outside the app filesystem; private access and quota must pass smoke tests. Supabase Storage Free is a fallback if needed. |
 | Embeddings | Local sentence-transformers model, candidate bge-small-en | Avoid paid embedding API; benchmark CPU/memory, relevance, and build time on free hosting. |
 | Keyword search | PostgreSQL full-text search | Search knowledge/ICD text alongside vector retrieval; compare results with semantic-only and lexical-only baselines. |
 | PDF text extraction | pypdf | Extracts selectable text page by page without OCR; scanned/image-only pages require OCR fallback. Preserve page numbers. |
