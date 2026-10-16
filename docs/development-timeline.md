@@ -1,63 +1,78 @@
-# Development Timeline (SOW-Aligned Plan)
+# Revised Development Timeline — Hosted Doctor Workspace and Clinical RAG MVP
 
-**Project:** AI-Powered Clinical Note Extraction and Coding Agent MVP  
-**Project window:** 13–26 October 2026  
-**Status:** Proposed schedule; implementation tasks require formal approval.
+**Revision date:** 16 October 2026  
+**Planning window:** 13–26 October 2026  
+**Status:** Proposed and high-risk; expanded scope and deployment/data handling require Mirai Labs approval.
 
-## 1. Fixed Milestones and Approval Gate
+> The original SOW has a six-workday implementation window (19, 20, 21, 22, 23 and 26 October). The expanded scope adds authentication, patient/encounter management, cloud persistence, multimodal knowledge ingestion, RAG, centralized model settings and hosting. Completing all expanded features plus the original evaluation criteria in this window is a substantial delivery risk. Confirm priority/scope with Mirai Labs instead of silently dropping mandatory SOW work.
 
-| Date | Milestone / deliverable | Constraint |
+## 1. Completed Planning Milestones
+
+| Date | Work | Status |
 |---|---|---|
-| Tue, 13 Oct 2026 | Review the SOW, identify scope and constraints, prepare clarification questions, begin market research | Planning and research only |
-| Tue, 13–Wed, 14 Oct 2026 | Review commercial products, open-source tools, research papers, and relevant methods | Record sources and distinguish documented facts from assumptions |
-| Wed, 14 Oct 2026 | Research presentation | Present findings and gaps relevant to the proposed MVP |
-| Thu, 15 Oct 2026, by 6:00 PM | Submit solution proposal, architecture, technology-stack rationale, and detailed timeline | Documents must clearly label unapproved choices |
-| Fri, 16 Oct 2026 | Architecture and technology review / formal approval gate | Do not begin feature implementation until approval is received |
+| 13 Oct | Review SOW, identify requirements/questions, begin market research | Documented |
+| 13–14 Oct | Review commercial products, open-source tools, and research papers | Documented |
+| 14 Oct | Research presentation | Scheduled/completed status to be confirmed by project owner |
+| 15 Oct | Solution, architecture, technology-stack rationale, requirements, evaluation and timeline documentation | Planning documents committed; technology choices remain proposals |
+| 16 Oct | Revise direction for hosted doctor workflow, role access, patient/encounter history, editable multimodal knowledge base, RAG, central model settings, and zero-cost deployment | Proposed design updated; formal approval still required |
 
-## 2. Post-Approval Execution Plan
+## 2. Approval Gate Before Clinical Data Use
 
-Implementation activities start only after formal approval. The available post-approval build window is six working days: 19, 20, 21, 22, 23, and 26 October.
+Before any implementation sends project notes, uploaded media, or patient records to external hosting or model providers:
 
-| Date | Planned work and deliverable | Verification / risk control |
+- Get written agreement from Mirai Labs for expanded hosted/multi-user scope.
+- Confirm what data may be stored in the hosted database/object store and which providers may process it.
+- Confirm the selected model provider's current data-use/retention terms.
+- Recheck Render and Neon free-tier terms and limits.
+- Confirm the required volume: all approximately 5,000 supplied notes or an explicitly approved evaluation/demo subset.
+- Until approval, use synthetic patients, synthetic notes, and synthetic knowledge documents for UI/hosting tests.
+
+## 3. Proposed Post-Approval Plan
+
+| Date | Focus and deliverable | Tests / risk controls |
 |---|---|---|
-| Fri, 16 Oct | Record approval decisions, settle permitted provider and data-handling requirements, confirm processing volume and scope | No implementation before approval; unresolved privacy or provider decisions remain blocking issues |
-| Mon, 19 Oct | Inspect the provided dataset and ICD-10 table; finalize annotation guidelines and sampling plan; begin gold-standard labelling; define the naive single-prompt baseline | Gold-standard labelling must begin before prompt tuning. Confirm access to the required data and specialty coverage |
-| Tue, 20 Oct | Continue gold-standard labelling toward at least 100 notes across at least 10 specialties; define and test the output schema and original-text offset rules; create the evaluation harness skeleton | Track annotation throughput and disagreements. Do not tune prompts against examples intended to remain an independent final test set |
-| Wed, 21 Oct | Implement approved local input handling and PHI masking; implement the structured extraction pass and schema validation | Test masked-to-original offset mapping and reject outputs with invalid or unsupported evidence |
-| Thu, 22 Oct | Implement ICD-10 keyword and semantic candidate retrieval; add ranked candidates and the no-confident-match outcome; run initial retrieval checks | Confirm the supplied code table is the retrieval source. Monitor API quotas and avoid unsupported code claims |
-| Fri, 23 Oct | Implement independent verification, bounded retries, reconciliation, abstention/escalation, and privacy-safe structured tracing; begin integrating reviewer controls | Test contradictions, missed entities, retry-limit behaviour, and note-embedded instructions |
-| Mon, 26 Oct | Complete reviewer UI and JSON export; finish integration; run evaluation and required challenge sets where labelled data is ready; report metrics and at least three poor-performing cases; finalize README, user guide, demo video (5–8 minutes), and final defense materials | Report every target as pass, fail, or not yet measured. Document any incomplete test, quota failure, or unresolved limitation rather than implying completion |
+| Fri, 16 Oct | Finalise scope decisions, architecture, logical schema, roles, and free-tier provider checks | No feature work on clinical data before approval. Treat the expanded scope as a change request if the original SOW remains binding. |
+| Mon, 19 Oct | Set up Django project, templates/HTMX/Bootstrap, configuration via environment secrets, Neon PostgreSQL connection, migrations, authentication and base roles | Test deploy preview, login/logout, server-side permissions, and synthetic seed data. Check Render cold start. |
+| Tue, 20 Oct | Implement doctor dashboard, patient list, patient detail, current/previous encounters, clinical-note records and review-history persistence | Test two synthetic doctors and prove access isolation. Preserve previous run history. |
+| Wed, 21 Oct | Implement central AI Settings page (provider/model allowlist, credential handling, test/save/activate) and clinical note input/extraction/schema/evidence checks | Use synthetic notes for provider tests; never log API keys. Test malformed outputs, invalid offsets, rate limits and no paid fallback. |
+| Thu, 22 Oct | Implement knowledge-base CRUD and private Neon Object Storage upload/download; text-file parsing and Tesseract OCR; doctor preview/correction/publication | Test file limits, private access, failure states, object persistence and permission enforcement. Audio transcription may require a smaller tested local model or approved free endpoint. |
+| Fri, 23 Oct | Implement local embeddings, PostgreSQL full-text + pgvector retrieval, RAG citations, priority rules, edit/version/deactivation/re-index, and integration with clinical workflow | Test source traceability, filters, stale-vector removal, relevance and patient-history isolation. Measure CPU/memory and request quotas. |
+| Mon, 26 Oct | Integration hardening; run available SOW evaluation/challenge tests; hosted smoke test; fix critical access/evidence defects; final README, deployment guide, user guide and 5–8 minute demo | Report every SOW target Pass/Fail/Not yet measured. Do not claim full acceptance if labels or challenge sets are incomplete. Record latency, free quota issues, and at least three poor cases. |
 
-## 3. Required Evaluation Work
+## 4. Work That Must Not Be Silently Reduced
 
-The following activities must be included in the plan and final evaluation report:
+The original SOW acceptance criteria remain mandatory unless the SOW is formally revised:
+- At least 100 manually labelled notes across at least 10 specialties before prompt tuning.
+- Diagnosis F1 >= 0.80; medication F1 >= 0.85.
+- 100% evidence faithfulness for accepted items; >= 90% status correctness.
+- ICD-10 top-3 >= 75%; rare-diagnosis correct no-confident-match >= 80% on at least 10 cases.
+- >= 80% contradiction detection on at least 20 cases; 100% correct handling of at least 10 adversarial cases.
+- Measurable improvement over the naive single-prompt baseline; median latency under 30 seconds per note.
+- Call/quota reporting and analysis of at least three poor-performing examples.
 
-- Gold standard: at least 100 manually labelled notes from at least 10 specialties, labelled before prompt tuning.
-- Baseline: compare the proposed agent with a naive single-prompt baseline on the same agreed evaluation notes.
-- Entity metrics: precision, recall, and F1 for diagnoses, medications, and procedures.
-- Evidence: programmatic original-span/offset checks with sampled manual review.
-- ICD-10: top-1 and top-3 metrics and correct no-confident-match behaviour for rare diagnoses.
-- Challenge data: at least 20 modified contradiction notes, at least 10 rare-diagnosis notes, and at least 10 adversarial notes containing embedded instructions and/or protected information.
-- Operations: median end-to-end latency, model calls per note, and cost/quota observations.
-- Error review: describe at least three poor-performing cases and likely causes.
+Expanded product tests additionally cover authentication, permissions, patient isolation, encounter persistence, upload validation, private files, OCR/transcription, knowledge versioning, RAG citations and filters, model configuration, secret handling, and redeployment persistence.
 
-The SOW's acceptance thresholds are documented in `docs/evaluation-plan.md`. This schedule does not assert that any target has already been met.
+## 5. Risk and Contingency Table
 
-## 4. Capacity, Dependencies, and Contingencies
+| Risk | Impact | Required response |
+|---|---|---|
+| Expanded scope not approved | Cannot process Mirai Labs data or commit to cloud patient data | Continue using synthetic data and request written clarification |
+| Six-day window too short | Mandatory functions/tests may remain incomplete | Agree on priority and revised schedule; document incomplete items honestly |
+| Free hosting cold starts | Evaluator sees delay on first visit | Display a clear loading/waking state and test URL before submission |
+| Render ephemeral filesystem | Uploads/local DB can disappear | Store persistent records in Neon PostgreSQL and files in external Object Storage |
+| Neon quota/storage/network limits | Demo may fail under excessive use | Limit uploads, monitor quota, defer work on exhaustion, no paid fallback |
+| OCR/audio consumes too many resources | Free-host CPU/RAM or execution time exceeded | Use small inputs, local OCR, test tiny transcription model or explicitly approved free API; defer if unsupported |
+| Model free quota / outage | Extraction and verification interrupted | Bounded retries, clear status and safe deferral; no silent model switch |
+| Annotation bottleneck | Required gold-standard set not ready | Track coverage daily, escalate risk, never shrink the minimum silently |
+| Credential or patient-data exposure | Privacy/security incident | Use synthetic public demo records, private buckets, environment secrets, masked traces and authorization tests |
 
-The six-day implementation window is tight given the required labelling, multi-pass agent, reviewer interface, evaluation, and final demo. The schedule depends on timely access to the supplied data, ICD-10 table, and approved model/API.
+## 6. Final Status Reporting
 
-- Start labelling immediately after approval and before prompt tuning.
-- Track the number of labelled notes and specialty coverage daily.
-- If annotation throughput, API quotas, or privacy approval threatens a required deliverable, raise the constraint with Mirai Labs promptly.
-- Do not silently reduce the minimum gold-standard or challenge-set sizes, remove evaluation requirements, or switch to an unapproved provider.
-- If any SOW target cannot be measured by 26 October, record the exact limitation and mark it **Not yet measured** rather than claiming success.
-- Use only Mirai Labs-provided clinical notes; do not source external clinical notes.
+For each day record:
+- **Done:** verifiable code/docs/tests committed.
+- **Blocked:** approval, data, provider, quota, or integration blockers.
+- **Next:** specific testable deliverables for the next work session.
 
-## 5. Scope Boundaries
+Do not describe proposed technologies as tested or implemented until commits and test results support it.
 
-The plan excludes OCR/scanned or handwritten notes, procedure-code assignment, EHR or billing integration, cloud or multi-user deployment, model fine-tuning, paid API keys, and GPU-dependent infrastructure, consistent with the SOW.
-
-## 6. Approval Status
-
-This timeline is a planning baseline, not permission to begin implementation. Feature work starts only after formal Mirai Labs approval. Final model, provider, and retrieval decisions must satisfy the approved privacy, free-tier, and compatibility requirements.
+**Status:** Revised schedule is a planning baseline only; scope, provider selection and data handling remain subject to formal approval.
