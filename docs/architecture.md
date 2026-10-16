@@ -16,7 +16,7 @@ The application is designed around the doctor's workflow rather than around indi
 2. **My Patients:** searchable list of authorized patients.
 3. **Patient Record:** overview, current encounter, prior encounters, clinical notes, diagnosis mentions, medication mentions, allergies, measurements, procedure mentions, and review history.
 4. **Clinical Notes / Review:** submit or open a note, inspect extracted items and evidence, accept/reject/flag items, inspect ICD-10 candidates, and export reviewed JSON.
-5. **Knowledge Base:** add text, text files, images, and voice/audio; preview/correct extracted text; edit, tag, prioritise, publish, version, deactivate, and re-index knowledge.
+5. **Knowledge Base:** add text, text files, multi-page PDFs, images, and voice/audio; preview/correct extracted content; edit, tag, prioritise, publish, version, deactivate, and re-index knowledge.
 6. **Activity / History:** inspect processing runs, review actions, configuration changes, and safe operational events.
 7. **AI Settings:** one central place to configure the active provider/model and supported parameters, test connectivity with synthetic input, and activate the saved configuration.
 8. **Administration:** manage users and role assignment; restrict to administrators where appropriate.
@@ -57,7 +57,7 @@ flowchart TD
 
     DASH --> KUP["Knowledge upload UI<br/>text / text files / images / audio"]
     KUP --> FILES["Private object storage<br/>Neon Object Storage candidate<br/>(must pass free-tier/privacy tests)"]
-    KUP --> EXTRACT["Text extraction pipeline<br/>text parser / Tesseract OCR /<br/>approved or local speech-to-text"]
+    KUP --> EXTRACT["Ingestion pipeline<br/>text parser + pypdf / render low-text PDF pages<br/>with pdf2image + Poppler / Tesseract OCR /<br/>approved or local speech-to-text"]
     FILES --> EXTRACT
     EXTRACT --> PREVIEW["Doctor preview and correction<br/>before publication"]
     PREVIEW --> CHUNK["Chunking + local embedding model"]
@@ -120,16 +120,16 @@ Patient history retrieval must be scoped to the current authorised patient. A qu
 The central settings page normally selects one active provider/model for the application. The same selected model can be invoked with different extraction and verification instructions in separate passes. A distinct verifier model is an optional advanced decision; do not make the doctor configure every task separately unless Mirai Labs specifically asks for it.
 
 ### 5.4 Multimodal reference knowledge ingestion
-1. Doctor adds text directly or uploads a text file, image, or audio file.
+1. Doctor enters text or uploads a supported text file, PDF, image, or audio file.
 2. Validate extension, MIME type, actual content, size, and limits; reject unsupported or unsafe files.
 3. Store the original object in a private bucket and create a database record with owner, source, status, version, timestamps, category, tags, and priority.
-4. Text input is parsed directly. Images may use Tesseract OCR. Audio uses a tested local CPU speech-to-text option or an approved free-tier service; it must never silently invoke a paid provider.
+4. Text files are parsed directly. PDFs are parsed page-by-page for selectable text using pypdf; only pages with little/no selectable text are rendered using pdf2image + Poppler and passed to Tesseract OCR. Images use Tesseract OCR. Audio uses a tested local CPU speech-to-text option or an approved free-tier service; it must never silently invoke a paid provider.
 5. Show extracted text/transcription for doctor correction and confirmation before publication.
 6. Split approved text into traceable chunks; create vectors with a local embedding model; store chunks, vectors, source references, and metadata in PostgreSQL/pgvector.
 7. On edit/deactivation, mark old versions and ensure stale chunks are updated or removed from retrieval. Re-indexing failures must be visible.
-8. Record source attribution in retrieval results so the doctor can inspect what informed the generated output.
+8. Record source attribution in retrieval results so the doctor can inspect what informed the generated output. For PDF sources, retain the original file reference and page number(s) for each extracted chunk where available.
 
-Images and voice are inputs to the **knowledge base** in this expanded scope, not a claim that the original SOW's clinical-note input is now unrestricted multimodal.
+PDFs, images, and voice are inputs to the **knowledge base** in this expanded scope, not a claim that the original SOW's clinical-note input is now unrestricted multimodal. PDF knowledge ingestion does not automatically change the original SOW exclusion of scanned clinical-note input.
 
 ### 5.5 RAG and priority logic
 - Retrieve candidates using keyword/full-text matching and vector similarity.
@@ -213,12 +213,12 @@ This is a proposed schema. Final fields, indexes, retention, and access controls
 - Enforce authentication and permissions server-side for every patient, encounter, note, document, export, and configuration endpoint.
 - Test horizontal access control: Doctor A must not retrieve Doctor B's patient records unless explicitly authorised.
 - Keep knowledge-source retrieval and patient-history retrieval logically separate and scoped.
-- Validate uploads for type, size, content, and processing limits; store them privately. Do not use public object URLs for sensitive files.
+- Validate uploads for type, size, content and PDF page count; limit PDF rendering/OCR work and processing time; store files privately. Do not use public object URLs for sensitive files.
 - Use short-lived signed file URLs if needed and verify the ownership/access decision before generating a link.
 - Avoid remote image/audio parsers that execute untrusted content. Use controlled subprocesses and timeouts for local OCR/transcription.
 - Keep original note text authoritative for offsets; test masking-to-original mapping, including repeated text occurrences.
 - Treat clinical note and uploaded knowledge text as untrusted input; document text must not override system instructions or provider policies.
-- Limit retries, time, file size, model call counts, token/audio duration, and ingestion jobs.
+- Limit retries, time, file size, PDF page count, rendered-page DPI, model call counts, token/audio duration, and ingestion jobs.
 - Ensure logs do not contain secrets, API keys, private file URLs, or protected note content.
 - Store secrets in deployment environment variables; use a separate encryption key for any credential encrypted at rest in the settings table.
 - For the free demo, use synthetic data. Do not claim clinical safety, regulatory compliance, or production readiness.
