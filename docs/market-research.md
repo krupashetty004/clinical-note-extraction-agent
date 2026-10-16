@@ -268,3 +268,54 @@ These studies inform the design; their results are not predictions for this MVP.
 - Keep study results tied to their original datasets and tasks; do not compare metrics as if they came from one benchmark.
 - Recheck product/model availability, terms, licences, and quotas before implementation.
 - Mark unverified claims as pending validation.
+
+
+---
+
+## 11. Addendum — Hosted Framework and Free-Tier Architecture Research (16 October 2026)
+
+The original market research focused on clinical NLP, extraction/coding products, and research papers. The revised product proposal now additionally requires a hosted doctor dashboard, roles, patient/encounter history, editable text/image/audio knowledge ingestion, vector retrieval/RAG, centralized model settings, and persistent free-tier hosting. The items below are architecture research—not approval of expanded SOW scope.
+
+### Web framework comparison
+
+- **Django + HTMX + Bootstrap (recommended):** Django provides an ORM, migrations, authentication, groups/permissions, admin support and server-rendered page workflow. HTMX can add page-fragment interactions without React. This aligns with records, encounter history, auditability, and a form/table-heavy doctor dashboard.
+- **FastAPI:** strong for API-first applications and typed endpoints, but user/session/permission/admin and rendered page workflows require more explicit assembly. A separate FastAPI service is not needed for the first hosted version unless testing reveals a clear requirement.
+- **Streamlit:** fastest for a simple data/AI prototype, but the revised multi-page patient/encounter management, account roles, document editing, permissions, and central configuration make a conventional web framework a better default.
+- **NiceGUI / Flet:** Python-oriented browser UI options worth noting, but they do not offer the same out-of-the-box combination of Django's ORM, migration, auth, permission and admin primitives.
+
+Official references: Django https://docs.djangoproject.com/ ; HTMX https://htmx.org/docs/ ; Bootstrap https://getbootstrap.com/docs/ ; FastAPI https://fastapi.tiangolo.com/ ; Streamlit https://docs.streamlit.io/ ; NiceGUI https://nicegui.io/ ; Flet https://flet.dev/
+
+### Hosted PostgreSQL and vector search
+
+The revised proposal selects **Neon Free PostgreSQL + pgvector** as the hosted database/vector layer. PostgreSQL stores relational records and source metadata; pgvector stores embeddings and supports similarity search. PostgreSQL full-text search can provide the lexical component for hybrid retrieval. Neon is the hosting provider, not an alternative to PostgreSQL as a database engine.
+
+Neon official documentation checked 16 October 2026:
+- Free plan: https://neon.com/blog/neon-free-plan-1-gb-per-project — documents 1 GB PostgreSQL storage per project, 100 CU-hours per project/month, and 5 GB public network transfer per project/month.
+- Neon backend GA: https://neon.com/blog/neon-backend-is-ga — documents Object Storage among the platform primitives and 5 GB Object Storage per Free project.
+- Object Storage overview: https://neon.com/blog/building-neon-object-storage — documents S3-compatible object storage and private buckets as the default in the configuration examples.
+- pgvector: https://neon.com/blog/optimizing-vector-search-performance-with-pgvector
+
+### Persistent file storage and hosted web app
+
+The primary file-storage proposal is **Neon Object Storage**, because the updated October 2026 official documentation lists 5 GB free per project and S3-compatible access. Use it for original uploads; use PostgreSQL metadata tables for source ownership, permissions, indexing status, source version, and vector-chunk links. This decision remains contingent on a smoke test for private bucket policies, upload/download/delete/signing from Python/boto3, and the actual free project allowance. If that test fails, Supabase Storage Free is a documented contingency, not the primary database.
+
+The proposed application host is **Render Free**. Official limitations include spin-down after 15 minutes idle, a cold start around one minute, and loss of local filesystem modifications on restart/redeploy/spin-down. Therefore, the app must not rely on a local SQLite database or local upload directory for persistent data. Store database state in Neon and files in external object storage.
+
+Sources:
+- Render free-service limitations: https://render.com/docs/free
+- Supabase Free quotas (fallback only): https://supabase.com/docs/guides/platform/billing-on-supabase and https://supabase.com/docs/guides/storage/pricing
+
+### Free-tier deployment risks
+
+Free plans are capacity-constrained, not unlimited. The app must:
+- enforce file-size and audio-duration limits;
+- monitor database, network, object-storage, and model request quotas;
+- use synthetic patient records on the public evaluation link by default;
+- display quota/provider errors and defer operations when limits are reached;
+- never silently switch to paid models or upgrade a service;
+- recheck current prices/terms/quotas before deployment;
+- document the cold-start behaviour and any feature which does not fit the free host's CPU/memory.
+
+### Research implication
+
+The expanded hosted architecture is currently a **proposal**. The original SOW excludes some of these features. Mirai Labs must approve the scope expansion and cloud/data-handling model before project clinical data or media is processed by hosted or external services. Public demo and deployment tests should use synthetic data until then.
