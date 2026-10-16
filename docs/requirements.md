@@ -104,9 +104,9 @@ This adds patient-record management beyond the original SOW's note-extraction MV
 
 - Public hosted demos must use synthetic patient data by default.
 - Do not place confidential SOW content or clinical records in the public or private code repository.
-- Do not send Mirai Labs notes, patient data, uploaded images, or audio to an external provider until both the provider data terms and the exact use case are approved.
+- Do not send Mirai Labs notes, patient data, uploaded PDFs, images, or audio to an external provider until both the provider data terms and the exact use case are approved.
 - De-identification/masking does not guarantee that every identifier is removed.
-- Store uploaded files in private buckets, apply access checks, enforce upload size/type limits, and avoid exposing public object URLs.
+- Store uploaded PDFs and other files in private buckets, apply access checks, enforce upload size/type and PDF page-count limits, and avoid exposing public object URLs.
 - Use short-lived signed download links where appropriate; validate file type and size; protect against malicious uploads.
 - Do not claim compliance or production clinical readiness merely because the demo is hosted.
 
