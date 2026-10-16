@@ -4,13 +4,13 @@
 
 **Phase:** Revised planning for a hosted, doctor-centred clinical workflow assistant. Documentation is being aligned; implementation status must be confirmed from code/tests, not inferred from the architecture.
 
-**Approval gate:** The hosted doctor workspace expands the original SOW's localhost/single-reviewer/text-only scope. Do not process Mirai Labs clinical notes, patient data, images, or audio in hosted/external services until Mirai Labs has approved the expanded scope and exact data-handling/provider arrangement in writing. Use synthetic data for public demo and deployment tests.
+**Approval gate:** The hosted doctor workspace expands the original SOW's localhost/single-reviewer/text-only scope. Do not process Mirai Labs clinical notes, patient data, PDFs, images, or audio in hosted/external services until Mirai Labs has approved the expanded scope and exact data-handling/provider arrangement in writing. Use synthetic data for public demo and deployment tests.
 
 ## Project Objective
 
 The original SOW proposes an assistive clinical-note extraction and coding agent that extracts diagnoses, medications, procedures, allergies, and vital signs/key measurements; links items to evidence in the original note; retrieves ICD-10 diagnosis candidates from the supplied table; independently verifies results; and sends uncertain/unsupported items to review.
 
-The revised product proposal adds a hosted doctor's workspace with role-based access, patient/encounter history, a doctor-managed knowledge base, multimodal knowledge ingestion, retrieval-augmented generation (RAG), central model settings, and persistent hosted storage. The system is not an autonomous clinical decision-maker.
+The revised product proposal adds a hosted doctor's workspace with role-based access, patient/encounter history, a doctor-managed knowledge base accepting text, PDFs, images, and voice/audio, retrieval-augmented generation (RAG), central model settings, and persistent hosted storage. The system is not an autonomous clinical decision-maker.
 
 ## Revised Stack Proposal (All Free Tiers / ₹0 Target)
 
@@ -39,7 +39,7 @@ These are proposed selections; compatibility, current quotas, model policies, an
 - At least 100 manually labelled notes across 10+ specialties before prompt tuning; compare against naive single-prompt baseline and report the SOW's acceptance metrics.
 - No paid API keys or GPU-dependent infrastructure.
 
-The requested hosted deployment, multi-user roles, patient history, OCR/audio knowledge ingestion and dynamic RAG knowledge base are **scope expansions pending formal approval**; they do not silently replace original SOW acceptance criteria or exclusions.
+The requested hosted deployment, multi-user roles, patient history, PDF/image/audio knowledge ingestion and dynamic RAG knowledge base are **scope expansions pending formal approval**; they do not silently replace original SOW acceptance criteria or exclusions.
 
 ## Documentation
 
