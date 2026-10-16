@@ -84,7 +84,7 @@ flowchart TD
 
     DASH --> UPLOAD["Knowledge upload UI<br/>text / text files / PDF / images / audio"]
     UPLOAD --> STORAGE[("Neon Object Storage<br/>private S3-compatible bucket")]
-    UPLOAD --> EXTRACT["Text parser + pypdf / PDF page renderer + Tesseract OCR /<br/>image OCR / approved or local speech-to-text"]
+    UPLOAD --> EXTRACT["Text parser + pypdf / pdf2image + Poppler for low-text pages /<br/>Tesseract OCR / image OCR / approved or local speech-to-text"]
     STORAGE --> EXTRACT
     EXTRACT --> EDIT["Doctor preview and correction"]
     EDIT --> EMBED["Chunk + local embeddings"]
