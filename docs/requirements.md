@@ -89,7 +89,7 @@ This adds patient-record management beyond the original SOW's note-extraction MV
 ### 2.6 Free-tier and deployment requirements
 
 - Target zero out-of-pocket cost for the evaluation deployment. Use free-tier hosting, managed storage/database allowances, open-source components, and free-tier model calls only.
-- Proposed deployment: Render Free web service + Supabase Free PostgreSQL/pgvector and private file storage, subject to current terms and quota verification.
+- Proposed deployment: Render Free web service + Neon Free PostgreSQL with pgvector. Neon Object Storage is the preferred file-storage candidate, but its current free allowance, service status, private-bucket controls, and Python/S3 compatibility must be validated before adoption. If it does not satisfy these checks, evaluate Supabase Storage Free as a fallback without changing the database choice.
 - Use PostgreSQL as the hosted persistence target. SQLite may be used for local tests only; do not depend on SQLite or uploaded files on the hosted application's ephemeral filesystem.
 - Use local/open-source embeddings and Tesseract OCR where they fit the host resource limits.
 - Audio transcription may use an approved free-tier API or a tested local CPU option. This component is a hosting/quota feasibility risk and must not be described as unlimited or guaranteed until tested.
@@ -189,4 +189,4 @@ The revised docs describe a proposed product direction; they do not constitute a
 8. What recovery/backup expectations apply to a free-tier demo?
 9. What is the revised deadline/timeline for the expanded scope?
 
-**Status:** Requirements baseline and requested additions documented; expanded scope, hosting, and data use are still pending formal Mirai Labs approval.
+**Status:** Requirements baseline and requested additions documented; expanded scope, hosting, storage choice, and data use are still pending formal Mirai Labs approval.
