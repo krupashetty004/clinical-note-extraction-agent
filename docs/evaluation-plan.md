@@ -15,7 +15,7 @@ Evaluate whether the proposed system:
 4. Detects unsupported claims, status errors, contradictions, and likely omissions.
 5. Improves over a naive single-prompt baseline.
 6. Supports the doctor workflow: authenticated access, patient/encounter history, reviewer decisions, and JSON export.
-7. Provides a dynamic editable knowledge base with text/image/audio ingestion, RAG, source citations, and priority controls.
+7. Provides a dynamic editable knowledge base with text/text-file/PDF/image/audio ingestion, RAG, source citations, and priority controls.
 8. Supports central model configuration without revealing secrets or silently changing providers.
 9. Persists application records/files across restarts and works within the planned free-tier hosting constraints.
 10. Handles failures and permissions correctly.
@@ -93,13 +93,17 @@ Record test identifier, expected outcome, observed outcome, pass/fail, and likel
 
 ### 5.3 Multimodal knowledge ingestion
 - Text entered in UI and supported text-file uploads index successfully after review.
+- Text-based PDFs: selectable text is extracted per page; page numbers/source references are preserved.
+- Scanned PDFs: pages with little/no selectable text are rendered and OCR'd; mixed PDFs OCR only pages needing it.
+- PDF uploads validate true file type, size, page count, password/corruption errors, processing timeout, and page-provenance metadata.
+- OCR output can be previewed/corrected; doctor must approve before publication.
 - Image upload validates type/size, OCR returns text for preview, correction works, and doctor must approve before publication.
 - Audio upload validates type/size, transcription can be reviewed/corrected before publication, and errors/timeouts are displayed.
 - Unsupported/malformed/oversized files are rejected safely.
 - Private object retrieval enforces permissions; guessed object keys or direct URLs do not expose files.
 - Failure after upload or during indexing leaves an explicit pending/failed status rather than a published broken record.
 - A knowledge item edited/deactivated has its stale chunks removed or updated; old source versions remain traceable where policy requires.
-- Test against resource limits on the actual free hosting plan; do not assume OCR/audio inference fits until tested.
+- Test PDF parser, Poppler rendering, OCR and audio against resource limits on the actual free hosting plan; use small synthetic files and never assume processing fits until tested.
 
 ### 5.4 RAG relevance, permissions, and priority
 - Queries retrieve relevant knowledge and expose title/source/version/chunk reference.
@@ -127,6 +131,7 @@ Record test identifier, expected outcome, observed outcome, pass/fail, and likel
 - Verify database/vector/file quotas and response when nearing limits.
 - Verify Neon PostgreSQL pgvector extension and migration support.
 - Verify private Neon Object Storage buckets and Python S3 client upload/download/delete/signing; if integration fails, document the contingency before using another provider.
+- Verify PDF page limits, digital/scanned/mixed files, page-number provenance, corrupt/encrypted PDF rejection, processing timeouts, and OCR-review-before-publication.
 - Confirm no usage path can auto-upgrade or incur a paid charge; document manual quota-exhaustion behaviour.
 
 ## 6. Test Execution Order
@@ -136,7 +141,7 @@ Record test identifier, expected outcome, observed outcome, pass/fail, and likel
 3. Define annotation and metric rules; prepare the gold standard before prompt tuning when approved data becomes available.
 4. Verify local database schema, migration, vector extension, storage integration, secrets and permissions.
 5. Run Django tests for auth, direct endpoint access, patient isolation, CRUD and encounter history.
-6. Test document ingestion, OCR/audio limitations, review-before-publish, chunking, embeddings and re-indexing.
+6. Test text/PDF/image/audio ingestion, PDF selectable-text and scanned-page paths, OCR/transcription limitations, review-before-publish, chunking, embeddings and re-indexing.
 7. Run RAG retrieval/ranking/source-citation tests and patient/reference source separation.
 8. Run the single-prompt baseline and proposed clinical extraction system on the same approved evaluation set.
 9. Run contradiction, rare-diagnosis and adversarial test sets.
