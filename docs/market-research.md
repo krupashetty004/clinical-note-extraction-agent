@@ -218,7 +218,7 @@ These studies inform the design; their results are not predictions for this MVP.
 4. Implement an explicit agent loop with bounded retries, reconciliation, traceable decisions, and human escalation.
 5. Keep the original note as the source of truth for span validation and UI highlighting.
 6. Evaluate against the SOW using the same agreed gold set for the baseline and proposed pipeline.
-7. Keep the architecture local and small; Streamlit and local persistence are candidate choices for a single-reviewer localhost MVP.
+7. **Original-SOW baseline recommendation (superseded by the 16 Oct 2026 scope revision):** Streamlit and local persistence were considered for a local, single-reviewer MVP. For the revised hosted doctor workspace, see Addendum 11: Django + HTMX + Bootstrap, Neon PostgreSQL/pgvector/Object Storage and Render Free are the current proposed choices.
 8. Choose models only after checking provider policy, availability, output format, quotas, latency, and measured quality.
 9. Do not implement excluded features such as OCR, procedure coding, fine-tuning, EHR integration, or cloud deployment.
 
