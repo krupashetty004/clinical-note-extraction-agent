@@ -1,168 +1,174 @@
-# Evaluation Plan (Draft — Pending Approval)
+# Evaluation Plan — Clinical Extraction, RAG, Permissions, and Free Hosted Demo
 
-**Project:** AI-Powered Clinical Note Extraction and Coding Agent MVP  
-**Status:** Proposed evaluation plan aligned to the SOW  
-**Evaluation data:** Mirai Labs-provided de-identified notes and ICD-10 table only
+**Revision date:** 16 October 2026  
+**Status:** Proposed; test execution pending approval and implementation  
+**Principle:** Acceptance thresholds are targets, not measured results. Report each as Pass, Fail, or Not yet measured.
+
+> Use synthetic data for public-hosted tests. The original SOW's clinical dataset may only be processed after Mirai Labs approves the revised scope, hosting, and data-handling design.
 
 ## 1. Evaluation Objectives
 
-Evaluate whether the MVP:
-- extracts diagnoses, medications, procedures, allergies, and key vital signs from the supplied clinical notes;
-- provides valid evidence spans and character offsets referring to the original note;
-- produces useful ICD-10 diagnosis-code candidates and abstains when no confident match is supported;
-- detects unsupported claims, incorrect statuses, contradictions, and likely missed entities;
-- handles adversarial note content without following embedded instructions or exposing protected information;
-- improves on a naive single-prompt baseline; and
-- operates within the SOW's free-tier and latency constraints.
+Evaluate whether the proposed system:
+1. Extracts diagnoses, medications, procedures, allergies, and vital signs/key measurements.
+2. Provides faithful evidence and original-note offsets for every accepted item.
+3. Retrieves appropriate ICD-10 diagnosis candidates from the supplied table and abstains when there is no confident match.
+4. Detects unsupported claims, status errors, contradictions, and likely omissions.
+5. Improves over a naive single-prompt baseline.
+6. Supports the doctor workflow: authenticated access, patient/encounter history, reviewer decisions, and JSON export.
+7. Provides a dynamic editable knowledge base with text/image/audio ingestion, RAG, source citations, and priority controls.
+8. Supports central model configuration without revealing secrets or silently changing providers.
+9. Persists application records/files across restarts and works within the planned free-tier hosting constraints.
+10. Handles failures and permissions correctly.
 
-Do not claim a target has been achieved until results have been measured.
+## 2. Original SOW Evaluation — Mandatory and Unchanged Unless Formally Revised
 
-## 2. Gold-Standard Dataset
+### Gold-standard data
+- At least 100 manually labelled notes across at least 10 specialties.
+- Labels must be created before prompt tuning.
+- Include diagnosis, medication and procedure spans/status, and correct ICD-10 diagnosis labels where supported.
+- Write annotation rules before annotation; record ambiguous cases and any review/adjudication procedure.
+- Separate development/prompt-iteration data from the independent final reporting set. Do not claim independent performance on repeatedly tuned examples.
 
-Create the gold standard before prompt tuning.
+### Systems compared
+- **Naive single-prompt baseline** using the same approved note set and comparable output definition.
+- **Proposed agent** including structured extraction, retrieval, independent verification, reconciliation, bounded retries, abstention, and review controls.
 
-| Requirement | SOW-aligned plan |
+### Required metrics/acceptance targets
+| Item | Target |
 |---|---|
-| Minimum labelled size | At least 100 manually labelled notes |
-| Specialty coverage | At least 10 specialties |
-| Source | Mirai Labs-provided clinical transcription dataset only |
-| Entity labels | Diagnoses, medications, and procedures with supporting spans and relevant status |
-| Diagnosis coding labels | Correct ICD-10 code(s) for labelled diagnoses where a confident match exists |
-| Annotation guidance | Document label definitions, span rules, status categories, and how ambiguous cases are handled |
-| Quality controls | Review unclear labels consistently and record unresolved annotation questions |
+| Diagnosis extraction | F1 >= 0.80 |
+| Medication extraction | F1 >= 0.85 |
+| Baseline improvement | Proposed agent measurably outperforms naive baseline |
+| Accepted-item evidence | 100% faithful; one fabricated or unsupported accepted item fails this target |
+| Status | >= 90% correct for accepted diagnoses and medications |
+| ICD-10 | Report top-1 and top-3; top-3 accuracy >= 75% |
+| Rare diagnosis | At least 10 test notes; >= 80% correct no-confident-match behaviour in cases where the supplied table/evidence does not support a reliable candidate |
+| Contradictions | At least 20 modified notes; flag >= 80% |
+| Adversarial handling | At least 10 notes with embedded instructions and/or protected information; 100% correct handling |
+| Abstention | Report flagging precision/recall and show flagged cases are harder than accepted cases |
+| Latency | Median end-to-end under 30 seconds per note on the approved free-tier environment |
+| Operations | Report model calls, retries, quota/rate-limit errors, latency and per-note usage |
+| Error analysis | Explain at least 3 poor-performing cases |
 
-The SOW's required gold-standard labels specifically include diagnoses, medications, and procedures with spans/status, plus correct ICD-10 codes for diagnoses. Allergies and vital signs remain extraction requirements and should be evaluated where the agreed annotation schema and labels support them.
+These are not achieved values. Mark them Pass/Fail/Not yet measured only after recording results.
 
-Keep a documented distinction between notes used for development/prompt iteration and notes used for final reporting, so final results are not presented as an independent evaluation if the same examples have been repeatedly used for tuning.
+## 3. Metric and Test Rules
 
-## 3. Systems Compared
+- Define exact and partial entity matching before evaluation, and apply the same rules to both systems.
+- Calculate precision, recall and F1 separately for diagnoses, medications and procedures. Evaluate allergies and vital signs where the approved labels support it.
+- Check accepted evidence programmatically against the original note; supplement checks with sampled manual review. A span that exists but does not support the entity is not faithful.
+- Score status categories according to the final annotation schema: current/present, negated/absent, uncertain, historical, or additional agreed values.
+- Report ICD top-1/top-3 and the denominator. Verify every returned candidate against the supplied canonical table.
+- For rare-diagnosis tests, define in advance which cases should lead to no-confident-match rather than an unsupported code.
+- Report false-positive and false-negative flags. Compare error rate/difficulty for accepted and flagged items.
+- Measure latency end-to-end including extraction, retrieval, verification, retries and review preparation.
 
-| System | Evaluation role |
-|---|---|
-| Naive single-prompt baseline | Establishes a simple comparison using the same evaluation notes |
-| Proposed agent MVP | Measures the multi-pass extraction, ICD-10 retrieval, verification, reconciliation, and abstention workflow |
+## 4. Required Original Challenge Sets
 
-Use equivalent note inputs and comparable output definitions for both systems. Document any difference in model calls or configuration that affects the comparison.
-
-## 4. Acceptance Criteria and Metrics
-
-| Requirement | Metric / pass criterion |
-|---|---|
-| Diagnosis extraction | Entity-level F1 score at least **0.80** |
-| Medication extraction | Entity-level F1 score at least **0.85** |
-| Baseline comparison | Proposed agent must perform measurably better than the naive single-prompt baseline |
-| Evidence faithfulness | **100% span faithfulness for accepted items**; one fabricated or unsupported accepted item fails this target |
-| Status correctness | At least **90%** correctness for accepted diagnoses and medications |
-| ICD-10 ranking | Top-3 accuracy at least **75%** |
-| Rare diagnosis abstention | Correct no-confident-match behaviour at least **80%** on the rare-diagnosis test set |
-| Contradiction handling | At least **80%** of contradictions in the contradiction test set flagged |
-| Abstention quality | Report abstention/flagging precision and recall; demonstrate that flagged items are harder than accepted items |
-| Adversarial handling | **100% correct handling** of the adversarial test set, including embedded instructions and protected information |
-| End-to-end latency | Median below **30 seconds per note** on the approved free-tier setup |
-| Model-call usage | Report model calls per note and how retries affect usage |
-| Cost and quota | Report measured per-note usage and the free-tier limits that constrain throughput |
-| Error analysis | Identify at least **three poor-performing cases** and explain the failure causes |
-
-These are acceptance targets from the SOW, not measured results. Use the terms "pass", "fail", or "not yet measured" only when supported by actual evaluation records.
-
-## 5. Required Challenge Test Sets
-
-Keep these challenge tests separate from the ordinary evaluation examples and report their results individually.
-
-| Test set | Minimum size | What it checks |
+| Test set | Minimum | Expected observation |
 |---|---:|---|
-| Contradiction set | At least **20 modified notes** | Whether the verifier catches contradictory statements or conflicting statuses |
-| Rare-diagnosis set | At least **10 notes** containing diagnoses absent from or poorly represented in the supplied code table | Whether the system appropriately abstains instead of forcing a weak code match |
-| Adversarial set | At least **10 notes** with embedded instructions and/or protected information | Whether the system treats note text as untrusted data, follows privacy controls, and avoids exposing protected information |
+| Contradiction set | 20 modified notes | Correctly flag >= 80% of contradictions |
+| Rare-diagnosis set | 10 notes | Correct no-confident-match behaviour >= 80% on cases where no reliable supplied-table match exists |
+| Adversarial set | 10 notes | Correctly ignore embedded instructions and avoid protected-information exposure; 100% correct handling |
 
-Record how each test was constructed, what behaviour counts as correct, and the observed result. Do not assume the tests passed merely because the relevant checks are implemented.
+Record test identifier, expected outcome, observed outcome, pass/fail, and likely cause for failures. Keep challenge notes separate from prompt tuning.
 
-## 6. Metric Definitions and Measurement Rules
+## 5. Expanded Hosted Product Tests — New Scope Pending Approval
 
-### 6.1 Entity-level precision, recall, and F1
+### 5.1 Authentication and role-based authorization
+- Anonymous users are redirected to login before seeing protected pages.
+- Login/logout/session expiry and invalid login behaviour work.
+- A Doctor has only explicitly permitted actions; Administrator-only role management is protected.
+- Direct URL requests, form submissions, exports and API/service calls receive the same permission checks as UI navigation.
+- Altering patient, encounter, document, or configuration IDs in a request cannot expose records outside the user's permitted scope.
+- Permission tests include at least two synthetic doctors with intentionally separate patient records.
 
-Calculate entity-level precision, recall, and F1 separately for diagnoses, medications, and procedures. Define the entity matching and partial-match rules before evaluation; apply the same rules to the proposed agent and baseline.
+### 5.2 Patient and encounter history
+- Create, view and update synthetic patient records.
+- Create a current encounter and retain previous encounters separately.
+- Save a note, extraction run, review decision, model config version and timestamp against the correct encounter.
+- Confirm previous extraction results remain auditable and are not silently overwritten.
+- Patient-history RAG retrieval for Patient A never includes Patient B content.
+- Historical diagnosis/medication mentions stay labelled historical unless the current source supports a current status.
 
-Report both category-level results and a clear overall summary. Do not hide a weak category behind an aggregate metric.
+### 5.3 Multimodal knowledge ingestion
+- Text entered in UI and supported text-file uploads index successfully after review.
+- Image upload validates type/size, OCR returns text for preview, correction works, and doctor must approve before publication.
+- Audio upload validates type/size, transcription can be reviewed/corrected before publication, and errors/timeouts are displayed.
+- Unsupported/malformed/oversized files are rejected safely.
+- Private object retrieval enforces permissions; guessed object keys or direct URLs do not expose files.
+- Failure after upload or during indexing leaves an explicit pending/failed status rather than a published broken record.
+- A knowledge item edited/deactivated has its stale chunks removed or updated; old source versions remain traceable where policy requires.
+- Test against resource limits on the actual free hosting plan; do not assume OCR/audio inference fits until tested.
 
-### 6.2 Evidence spans and original offsets
+### 5.4 RAG relevance, permissions, and priority
+- Queries retrieve relevant knowledge and expose title/source/version/chunk reference.
+- Compare semantic retrieval, keyword/full-text retrieval, and hybrid ranking on a small labelled synthetic query set.
+- Verify metadata filters are applied before ranking.
+- Increasing a document's priority can only affect eligible relevant items; it cannot bypass user access or cause clearly unrelated material to be treated as evidence.
+- Low-relevance queries produce a no-relevant-context result rather than forced context.
+- Retrieved reference knowledge is visibly distinguished from evidence spans in the current clinical note.
+- The system does not automatically train/fine-tune the model when knowledge is added.
 
-Programmatically check that each accepted item's start/end offsets are valid for the original note and that the cited source text supports the extracted item. Supplement automated checks with sampled manual review.
+### 5.5 AI settings and model testing
+- Provider/model selection uses an allowlist; unsupported IDs/providers are rejected.
+- Credentials are masked on screen; raw keys do not appear in database query output, logs, traces, error messages, HTML source, or Git.
+- Test connection uses synthetic non-sensitive input and reports response status, latency, parsing/schema support, and failure reason.
+- The model can be saved as a draft and activated only via an authorised action.
+- A failed test does not silently replace the currently active configuration.
+- Each run is tied to a config version/model identifier.
+- Rate limits/outages produce safe failures and no paid fallback.
+- Connection success is not scored as clinical accuracy; run a model quality evaluation separately.
 
-Evidence must be checked against the original note, not an independently normalized copy. When PHI masking or normalization changes text positions, the system must map offsets back to the original note correctly.
+### 5.6 Persistence, storage and hosting
+- Publish synthetic patient/knowledge records, restart/redeploy the web service, and verify database records and uploaded files still exist.
+- Confirm no persistent data is stored only on Render's ephemeral filesystem.
+- Check Render cold-start and hosted-link behaviour.
+- Verify database/vector/file quotas and response when nearing limits.
+- Verify Neon PostgreSQL pgvector extension and migration support.
+- Verify private Neon Object Storage buckets and Python S3 client upload/download/delete/signing; if integration fails, document the contingency before using another provider.
+- Confirm no usage path can auto-upgrade or incur a paid charge; document manual quota-exhaustion behaviour.
 
-A span that exists but does not support the entity is not faithful evidence. A text match alone is not proof that the extracted interpretation is correct.
+## 6. Test Execution Order
 
-### 6.3 Status correctness
+1. Obtain approval for expanded scope, hosting, provider/data-use and patient data handling.
+2. Create synthetic data and seed users with separate access permissions.
+3. Define annotation and metric rules; prepare the gold standard before prompt tuning when approved data becomes available.
+4. Verify local database schema, migration, vector extension, storage integration, secrets and permissions.
+5. Run Django tests for auth, direct endpoint access, patient isolation, CRUD and encounter history.
+6. Test document ingestion, OCR/audio limitations, review-before-publish, chunking, embeddings and re-indexing.
+7. Run RAG retrieval/ranking/source-citation tests and patient/reference source separation.
+8. Run the single-prompt baseline and proposed clinical extraction system on the same approved evaluation set.
+9. Run contradiction, rare-diagnosis and adversarial test sets.
+10. Test model configuration, provider errors, quotas and persistence.
+11. Calculate/report metrics, inspect spans manually and describe at least three failures.
+12. Publish evaluation results with Pass/Fail/Not yet measured status for all targets.
 
-For accepted diagnoses and medications, compare the system's status labels with the annotated status. Report the percentage correct and describe common errors, such as confusing historical, uncertain, absent, or current statements.
+## 7. Final Evaluation Report Content
 
-### 6.4 ICD-10 candidate evaluation
+1. Dataset size, specialty distribution and annotation guideline.
+2. Data split and system/model configuration identifiers.
+3. Baseline and proposed-system metrics by entity type.
+4. Original-note evidence faithfulness and offset validation.
+5. Status correctness and common status errors.
+6. ICD-10 top-1/top-3 and rare-diagnosis abstention.
+7. Contradiction and adversarial results.
+8. Abstention precision/recall and accepted-vs-flagged error analysis.
+9. Model calls, retries, latency, free-tier usage and quota failures.
+10. Results for authentication, patient isolation, persistence, uploads, RAG and central settings.
+11. At least three failure case analyses.
+12. Every acceptance target marked Pass, Fail, or Not yet measured.
+13. A list of unimplemented/blocked features and scope/approval limitations.
 
-- **Top-1 accuracy:** The correct code appears as the first ranked candidate.
-- **Top-3 accuracy:** The correct code appears among the three highest-ranked candidates.
-- **Rare-diagnosis no-match rate:** On the rare-diagnosis test set, measure how often the system correctly returns the no-confident-match outcome when the supplied code table does not provide a sufficiently supported match.
+## 8. Reporting Rules
 
-Document the exact denominator and treatment of cases where the supplied table does contain an appropriate code.
+- Use only approved Mirai Labs clinical data; use synthetic records for public hosting.
+- Never claim a target before it has been measured.
+- Do not silently reduce dataset sizes or challenge-set sizes due to time or quotas.
+- Do not treat schema validity, successful API connectivity, high similarity, or an attractive demo as proof of clinical correctness.
+- Do not label a free-hosting prototype production-ready or claim regulatory/compliance certification.
+- Capture test environment and time, since free-tier quotas/provider capabilities change.
 
-### 6.5 Abstention and flagged-item analysis
+## 9. Approval Status
 
-Report flagging precision and recall for items requiring review. Explain false positives (items flagged unnecessarily) and false negatives (items that should have been flagged but were not).
-
-Compare the difficulty/error rate of flagged items with accepted items. This analysis should demonstrate whether abstention concentrates riskier or less certain items for review.
-
-### 6.6 Contradictions and adversarial notes
-
-For each challenge set, record the test identifier, expected behaviour, observed outcome, and pass/fail result. For adversarial tests, check that embedded note instructions do not override system behaviour and that protected information is not exposed in traces or outputs.
-
-### 6.7 Operational measurements
-
-Measure end-to-end latency per note, including extraction, retrieval, verification, and any retries. Report the median and describe the test environment.
-
-Report model calls per note, retry counts, rate-limit failures, and any quota-related interruptions. State the provider/model identifiers and the free-tier limits in effect during the evaluation.
-
-## 7. Evaluation Procedure
-
-1. Finalize the annotation guidelines and label the gold-standard notes before prompt tuning.
-2. Prepare the naive single-prompt baseline and proposed agent configurations.
-3. Confirm the agreed matching rules, metric definitions, and challenge-test construction.
-4. Run both systems on the same agreed evaluation notes.
-5. Run the contradiction, rare-diagnosis, and adversarial test sets.
-6. Calculate metrics using a reproducible evaluation script.
-7. Manually inspect a sample of evidence spans and review automated validation failures.
-8. Record latency, model calls per note, quota-related failures, and measured usage.
-9. Investigate at least three poor-performing cases and document likely causes.
-10. Produce an evaluation report separating measured results, assumptions, limitations, and acceptance-target status.
-
-Evaluation must use only Mirai Labs-provided clinical data. Do not source external clinical notes for the evaluation.
-
-## 8. Required Evaluation Report
-
-The report should include:
-
-1. Dataset size and specialty coverage.
-2. Annotation guidelines and any unresolved labelling ambiguity.
-3. Baseline and proposed-system configurations.
-4. Precision, recall, and F1 by entity category.
-5. Evidence-span faithfulness results and manual-review findings.
-6. Status correctness for accepted diagnoses and medications.
-7. ICD-10 top-1/top-3 performance and rare-diagnosis no-match performance.
-8. Contradiction and adversarial test results.
-9. Abstention/flagging precision, recall, and accepted-versus-flagged difficulty analysis.
-10. Median latency, model calls per note, and free-tier quota observations.
-11. At least three poor-performing examples, with error analysis.
-12. A table marking every SOW acceptance target as **Pass**, **Fail**, or **Not yet measured**.
-
-Protect clinical data in the report. Use non-identifying test references and do not include protected information in logs, traces, or published examples.
-
-## 9. Reporting Rules
-
-- Never state that an acceptance target has been achieved before it has been measured.
-- Clearly separate SOW requirements, proposed evaluation procedures, and measured results.
-- Document failures and limitations; do not omit difficult cases.
-- Do not silently reduce required dataset or challenge-set sizes due to time or API quota constraints. Raise capacity issues for scope clarification.
-- Keep the evaluation process reproducible using the project's documented setup and commands.
-
-## 10. Approval Status
-
-This is a proposed evaluation plan based on the SOW. The annotation protocol, exact evaluation split, and execution details remain subject to project review and approval. Implementation and model calls with project clinical notes must not begin before the required approval and privacy conditions are satisfied.
+This is a proposed test plan. The expanded doctor workspace and hosted RAG system require written Mirai Labs scope approval. Clinical evaluation execution requires authorized dataset access and approved handling arrangements. Actual results remain **Not yet measured** until tests are run.
