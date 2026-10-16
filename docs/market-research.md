@@ -319,3 +319,14 @@ Free plans are capacity-constrained, not unlimited. The app must:
 ### Research implication
 
 The expanded hosted architecture is currently a **proposal**. The original SOW excludes some of these features. Mirai Labs must approve the scope expansion and cloud/data-handling model before project clinical data or media is processed by hosted or external services. Public demo and deployment tests should use synthetic data until then.
+
+### PDF knowledge ingestion — simple, zero-cost path
+
+Recommended two-stage implementation:
+1. Use **pypdf** to extract selectable text from each PDF page. This is the simplest path for ordinary digital PDFs and requires no OCR API. Official guide: https://pypdf.readthedocs.io/en/latest/user/extract-text.html
+2. If a page yields little or no selectable text, render only that page with **pdf2image + Poppler** and OCR it with **Tesseract**. The pdf2image wrapper requires Poppler, which must be installed as a system dependency; test this during the Render build. Official references: https://pdf2image.readthedocs.io/en/latest/overview.html and https://pdf2image.readthedocs.io/en/latest/installation.html; Tesseract input notes: https://tesseract-ocr.github.io/tessdoc/InputFormats.html
+3. Preserve the original PDF privately and keep page numbers with extracted chunks so the doctor can trace retrieved knowledge back to the source.
+4. Show extracted text and OCR output for doctor correction before publishing to RAG.
+5. Limit upload size, PDF page count, rendered DPI, and execution time. Reject corrupt/password-protected documents when they cannot be processed safely.
+
+**Keep the scope distinction explicit:** PDF upload is for the expanded reference knowledge base. It does not on its own add scanned PDF clinical-note input to the original SOW. This approach avoids introducing a paid PDF/OCR API and does not require OCR for ordinary text PDFs.
