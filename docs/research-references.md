@@ -69,3 +69,41 @@ Use the SOW's metric definitions and accepted evaluation data as the authoritati
 - Keep results tied to the source study's task and dataset.
 - Revalidate changing model and product details before implementation.
 - Do not place the confidential SOW or any clinical dataset in the repository.
+
+
+## 7. Hosted application and free-tier provider research (checked 16 October 2026)
+
+### Neon PostgreSQL, pgvector and Object Storage
+
+- Neon Free plan update (Oct 2026; 1 GB database storage/project): https://neon.com/blog/neon-free-plan-1-gb-per-project
+- Neon backend GA (PostgreSQL, Object Storage, functions/auth overview and 5 GB Object Storage on Free plan): https://neon.com/blog/neon-backend-is-ga
+- Neon Object Storage details and S3-compatible design: https://neon.com/blog/building-neon-object-storage
+- Neon pgvector retrieval: https://neon.com/blog/optimizing-vector-search-performance-with-pgvector
+- Neon free-plan docs: https://neon.com/docs/introduction/plans
+
+### Render deployment constraints
+
+- Free services and free web-service constraints (sleep, cold start, ephemeral file system): https://render.com/docs/free
+- First deployment guidance: https://render.com/docs/your-first-deploy
+- FAQ: https://render.com/docs/faq
+
+### Supabase — fallback for private file storage, not the primary database
+
+- Billing and Free plan allowances: https://supabase.com/docs/guides/platform/billing-on-supabase
+- Storage pricing and 1 GB Free storage allowance: https://supabase.com/docs/guides/storage/pricing
+
+### UI framework references
+
+- Django: https://docs.djangoproject.com/
+- HTMX: https://htmx.org/docs/
+- Bootstrap: https://getbootstrap.com/docs/
+- Tesseract OCR: https://github.com/tesseract-ocr/tesseract
+- Sentence Transformers: https://www.sbert.net/
+- pgvector: https://github.com/pgvector/pgvector
+
+### Source interpretation / caveats
+
+- Neon is the proposed **PostgreSQL hosting provider**; PostgreSQL remains the database engine, and pgvector is its vector extension.
+- Neon Object Storage is selected as the preferred file-storage candidate because current official documentation describes it as generally available, S3-compatible, and included in Neon Free plan allowances. Private-bucket access and Python/boto3 integration still require an implementation smoke test.
+- Render Free is suitable for an evaluation demo, not a production clinical service. Its free web services can sleep and have ephemeral filesystems.
+- Recheck quotas and product terms immediately before deployment; a source review is not a substitute for measuring the actual project's remaining quota.
