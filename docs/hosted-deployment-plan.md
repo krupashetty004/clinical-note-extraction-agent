@@ -108,6 +108,7 @@ Build and static collect must not require credentials for an external model call
 ## 8. Pre-Submission Smoke-Test Checklist
 
 - [ ] Public HTTPS URL loads and login/logout work.
+- [ ] Text PDFs, scanned PDFs, and mixed PDFs pass the intended parser/OCR path; page numbers remain traceable in the knowledge base.
 - [ ] Anonymous users cannot access protected pages.
 - [ ] Doctor A cannot access Doctor B's synthetic patients/encounters/files unless explicitly permitted.
 - [ ] Patient/encounter/note data survives web-service restart/redeploy.
