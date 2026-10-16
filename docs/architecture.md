@@ -1,280 +1,241 @@
-# Architecture, Technology Stack & Development Timeline
+# Revised System Architecture, Technology Stack, and Hosted Workflow
 
-**Project:** AI-Powered Clinical Note Extraction and Coding Agent MVP  
-**Planning window:** 13–26 October 2026  
-**Status:** Proposal pending formal Mirai Labs approval  
-**Target:** Localhost, one reviewer, English text notes, free-tier services only
+**Project:** AI-Powered Clinical Note Extraction and Coding Agent  
+**Revision:** 16 October 2026  
+**Status:** Proposed design; expanded requirements, hosting, provider, and data handling pending formal Mirai Labs approval.
 
-> Do not begin feature implementation or send project clinical notes to an external model until Mirai Labs has approved the architecture, provider and data-handling approach.
+> The revised doctor workspace is materially broader than the original SOW. Use synthetic data for public-hosting and UI tests. Do not upload Mirai Labs clinical notes or enable external model processing until the exact scope, provider, hosting, storage, and data-handling arrangements are approved in writing.
 
-# Part I — System Architecture
+## 1. Product Direction
 
-## 1. Objective and Scope
+The application is designed around the doctor's workflow rather than around individual AI tasks. A doctor signs in, sees authorized patients and recent activity, opens a patient record, reviews current and previous encounters, processes a clinical note, inspects evidence-linked results, manages reference knowledge, and configures/tests the active AI provider/model from a central settings page.
 
-Propose a local tool that extracts diagnoses, medications, procedures, allergies, and vital signs/key measurements from Mirai Labs-provided clinical notes; links each item to evidence in the original note; retrieves ICD-10 candidates for diagnoses; independently checks proposed results; and lets a reviewer resolve uncertain items.
+### Doctor-facing navigation
 
-The SOW describes approximately 5,000 de-identified English notes across about 40 specialties and a supplied ICD-10 table. The original note remains the source of truth. Procedure extraction is included; **procedure-code assignment is excluded**.
+1. **Dashboard:** recent activity, pending review items, recent patients, and useful actions.
+2. **My Patients:** searchable list of authorized patients.
+3. **Patient Record:** overview, current encounter, prior encounters, clinical notes, diagnosis mentions, medication mentions, allergies, measurements, procedure mentions, and review history.
+4. **Clinical Notes / Review:** submit or open a note, inspect extracted items and evidence, accept/reject/flag items, inspect ICD-10 candidates, and export reviewed JSON.
+5. **Knowledge Base:** add text, text files, images, and voice/audio; preview/correct extracted text; edit, tag, prioritise, publish, version, deactivate, and re-index knowledge.
+6. **Activity / History:** inspect processing runs, review actions, configuration changes, and safe operational events.
+7. **AI Settings:** one central place to configure the active provider/model and supported parameters, test connectivity with synthetic input, and activate the saved configuration.
+8. **Administration:** manage users and role assignment; restrict to administrators where appropriate.
 
-## 2. Main Components
+Do not hardcode patient names, knowledge records, model names, dashboard counters, or uploaded-file lists. Populate these views from persisted data.
 
-| Component | Responsibility |
-|---|---|
-| Input and source manager | Validate note input and preserve the original text for evidence validation and highlighting. |
-| Local privacy layer | Mask identifying information before any approved external model call and maintain masked-to-original offset mapping. |
-| Extraction pass | Return structured clinical items, status/attributes, exact evidence spans and original-note offsets. |
-| ICD-10 retrieval | Combine keyword and semantic search over the supplied code table; rank diagnosis candidates and allow a no-confident-match result. |
-| Independent verifier | Check evidence support, offsets, status, contradictions and likely missed items. It receives the note and proposed items, not the extractor's hidden reasoning. |
-| Agent orchestrator | Select tools/passes, inspect outcomes, apply bounded retries, reconcile disagreement, and accept, reject, abstain or escalate. |
-| Privacy-safe trace | Record calls, outcomes, retries and decisions using masked payloads or safe metadata only. |
-| Local reviewer UI | Show the original note, evidence highlights, structured items, diagnosis-code candidates, review flags/reasons, trace, accept/reject controls and JSON export. |
-| Evaluation harness | Compare the agent with a naive single-prompt baseline and measure the required metrics and challenge tests. |
+## 2. Original SOW vs Expanded Proposal
 
-## 3. Mermaid Architecture Diagram
+The original SOW requires extraction, original-source evidence/offsets, diagnosis-code candidates from the supplied ICD-10 table, independent verification, bounded orchestration, safe traces, human review, and quantitative evaluation. Its baseline scope is local/one reviewer/text notes; OCR and cloud/multi-user deployment were excluded.
+
+The expanded proposal adds a hosted doctor workspace, user roles, patient/encounter history, an editable multimodal knowledge base, RAG, model configuration through the UI, cloud database/storage, and a hosted public demo. These are scope changes, not assumed SOW requirements. Obtain written Mirai Labs approval before implementing them against project data. Use synthetic data while approval is pending.
+
+## 3. Main Architecture Diagram (Technology Included)
 
 ```mermaid
 flowchart TD
-    A["Clinical note input"] --> B["Validate input and preserve original"]
-    B --> C["Local PHI masking + offset mapping"]
-    C --> O["Agent orchestrator"]
-    O --> E["Structured extraction"]
-    E --> S["Schema + original-span validation"]
-    S --> R["ICD-10 keyword + semantic retrieval<br/>(diagnoses only)"]
-    R --> V["Independent verification<br/>evidence, status, offsets,<br/>contradictions, omissions"]
-    V --> D{"Checks pass?"}
-    D -->|Yes| AC["Verified items"]
-    D -->|No| X{"Recoverable and budget remains?"}
-    X -->|Yes| O
-    X -->|No| H["Reject / abstain / human review"]
-    AC --> UI["Local reviewer interface"]
-    H --> UI
-    UI --> J["Reviewed JSON export"]
-    J --> G["Evaluation: gold standard + baseline + tests"]
+    BR["Doctor / Administrator browser<br/>Django templates + HTMX + Bootstrap"] --> APP["Render Free web service<br/>Django / Python"]
+    APP --> AUTH["Django authentication<br/>roles + server-side permission checks"]
+    AUTH --> DASH["Doctor workspace<br/>dashboard, patients, encounters, review, settings"]
 
-    T[("Privacy-safe trace<br/>masked data / safe metadata")]
-    O -. calls and decisions .-> T
-    E -. result .-> T
-    R -. retrieval result .-> T
-    V -. verification result .-> T
-    H -. escalation reason .-> T
+    DASH --> PAT["Patient & encounter services"]
+    PAT <--> DB[("Neon PostgreSQL Free<br/>Django ORM + pgvector<br/>patients, encounters, notes,<br/>review state, audit metadata")]
+    PAT --> NOTE["Clinical note workflow<br/>preserve immutable original"]
+    NOTE --> MASK["Local masking +<br/>masked-to-original offset map"]
+    MASK --> ORCH["Explicit Python agent orchestrator"]
+    ORCH --> MODEL["Active configured LLM provider/model<br/>through allowlisted model adapter"]
+    MODEL --> SCHEMA["Pydantic schema validation<br/>+ original-span checks"]
+    SCHEMA --> ICD["ICD-10 table retrieval<br/>PostgreSQL full-text ranking<br/>+ pgvector semantic candidates"]
+    ICD --> VER["Independent verification pass<br/>evidence, status, offsets,<br/>contradictions, likely omissions"]
+    VER --> DEC{"Evidence and checks pass?"}
+    DEC -->|Yes| ACCEPT["Verified items"]
+    DEC -->|No / recoverable| LOOP{"Retry budget remains?"}
+    LOOP -->|Yes| ORCH
+    LOOP -->|No| REVIEW["Reject / abstain / human review"]
+    ACCEPT --> SAVE["Persist encounter output<br/>and review history"]
+    REVIEW --> SAVE
+    SAVE --> DASH
+
+    DASH --> KUP["Knowledge upload UI<br/>text / text files / images / audio"]
+    KUP --> FILES["Private object storage<br/>Neon Object Storage candidate<br/>(must pass free-tier/privacy tests)"]
+    KUP --> EXTRACT["Text extraction pipeline<br/>text parser / Tesseract OCR /<br/>approved or local speech-to-text"]
+    FILES --> EXTRACT
+    EXTRACT --> PREVIEW["Doctor preview and correction<br/>before publication"]
+    PREVIEW --> CHUNK["Chunking + local embedding model"]
+    CHUNK --> KB[("Neon PostgreSQL + pgvector<br/>knowledge documents, chunks,<br/>vectors, tags, source, status, priority")]
+    KB --> RAG["RAG retrieval service<br/>keyword + semantic search,<br/>metadata / permissions filters"]
+    RAG -. approved reference context .-> ORCH
+    ICD -. source-of-truth code table .-> DB
+
+    DASH --> CFG["Central AI Settings<br/>provider/model, API credential,<br/>supported parameters, test/activate"]
+    CFG --> SEC["Deployment secrets +<br/>encrypted credential storage"]
+    CFG -. active version .-> ORCH
+    ORCH -. safe event metadata .-> TRACE["Privacy-safe audit/trace events"]
+    VER -. safe decision metadata .-> TRACE
+    CFG -. configuration-change event .-> TRACE
+    TRACE --> DB
+    ACCEPT --> JSON["Reviewed JSON export"]
+    REVIEW --> JSON
 ```
 
-### How to Read the Mermaid Diagram
+**Storage note:** Neon is the proposed PostgreSQL provider and supports pgvector. Neon Object Storage is the preferred file-storage candidate only if its current free allowance, private access controls, reliability, and Python/S3 compatibility pass validation. Its official material has described Object Storage as beta, so do not treat availability/terms as settled. If it fails the acceptance checklist, evaluate a free private storage alternative (for example, Supabase Storage Free) without changing the Neon database decision. Reconfirm all free allowances before deployment.
 
-Follow the arrows from top to bottom. The boxes describe work the system does; the diamond shapes represent decisions.
+## 4. Data Sources Must Stay Distinct
 
-| Diagram step | What the system does | Example |
+The system has three logically different sources:
+
+1. **Original clinical note:** the evidence source for each extracted claim. Accepted entity evidence and character offsets must point into this original text.
+2. **Supplied ICD-10 reference table:** the canonical source for diagnosis-code candidates and code descriptions. Do not invent codes. Procedure-code assignment remains out of scope.
+3. **Doctor-managed reference knowledge / patient history:** RAG may retrieve approved reference passages and relevant history for context, but their sources must remain identified and access-filtered. A knowledge-base document is not proof that a diagnosis was written in the current clinical note.
+
+Patient history retrieval must be scoped to the current authorised patient. A query for one patient must never retrieve another patient's notes, encounter content, or identifiers. Reference knowledge and patient-specific history should use separate retrieval scopes or mandatory metadata filters.
+
+## 5. Main Doctor Workflow
+
+### 5.1 Login and dashboard
+- Authenticate each user before loading patient, note, knowledge, or AI-settings data.
+- Enforce permissions in Django views/services and database queries; hiding a button is not authorization.
+- The proposed initial roles are Doctor and Administrator. The Doctor role manages authorized patients/encounters, knowledge records, review decisions, and—if approved—central AI settings. Administrators manage account/role administration and system-wide settings.
+- Create synthetic demonstration users and records; never put passwords, real patient data, provider keys, or uploaded clinical files in GitHub.
+
+### 5.2 Patients and encounters
+- Search only patients the logged-in doctor is permitted to access.
+- Separate a patient's current encounter from previous encounters.
+- Keep notes, processing runs, accepted/rejected items, model version identifiers, and review decisions attached to a specific encounter.
+- Preserve history instead of silently overwriting a previous extraction.
+- Label historical diagnoses and medication mentions with their date/context; do not promote historical mentions to current facts without support in the present note.
+
+### 5.3 Clinical-note extraction
+1. Receive an English text note for the approved encounter workflow.
+2. Preserve the exact original note as immutable evidence source.
+3. Perform local identifier masking before any approved external model call; maintain an explicit map between masked and original character positions.
+4. Call the active model configuration using the extraction prompt and strict output contract.
+5. Validate the response using Pydantic and additional checks for offsets/evidence; schema validity alone is not correctness.
+6. Retrieve diagnosis-code candidates from the supplied code table using keyword and semantic search. Return no-confident-match when unsupported.
+7. Run an independent verification pass using the note and proposed items, not the extractor's hidden reasoning.
+8. Reconcile outcomes in an explicit Python agent loop. Retry only recoverable failures within a configured call/time budget.
+9. Accept only items passing evidence, status, offset, and verification checks; reject unsupported claims, abstain if coding is uncertain, and route unresolved cases to item review or note escalation.
+10. Show the original note with evidence highlighting, status, code candidates, flags/reasons, trace-safe process history, and accept/reject controls.
+11. Persist review results and export reviewed JSON.
+
+The central settings page normally selects one active provider/model for the application. The same selected model can be invoked with different extraction and verification instructions in separate passes. A distinct verifier model is an optional advanced decision; do not make the doctor configure every task separately unless Mirai Labs specifically asks for it.
+
+### 5.4 Multimodal reference knowledge ingestion
+1. Doctor adds text directly or uploads a text file, image, or audio file.
+2. Validate extension, MIME type, actual content, size, and limits; reject unsupported or unsafe files.
+3. Store the original object in a private bucket and create a database record with owner, source, status, version, timestamps, category, tags, and priority.
+4. Text input is parsed directly. Images may use Tesseract OCR. Audio uses a tested local CPU speech-to-text option or an approved free-tier service; it must never silently invoke a paid provider.
+5. Show extracted text/transcription for doctor correction and confirmation before publication.
+6. Split approved text into traceable chunks; create vectors with a local embedding model; store chunks, vectors, source references, and metadata in PostgreSQL/pgvector.
+7. On edit/deactivation, mark old versions and ensure stale chunks are updated or removed from retrieval. Re-indexing failures must be visible.
+8. Record source attribution in retrieval results so the doctor can inspect what informed the generated output.
+
+Images and voice are inputs to the **knowledge base** in this expanded scope, not a claim that the original SOW's clinical-note input is now unrestricted multimodal.
+
+### 5.5 RAG and priority logic
+- Retrieve candidates using keyword/full-text matching and vector similarity.
+- Apply mandatory permissions and scope filters first; then relevance thresholding, ranking, and optional doctor-configured priority.
+- Priority should influence ordering among relevant eligible results; it must not make unrelated or unsafe text outrank better evidence solely because it has a high priority.
+- Deduplicate overlapping chunks and keep document title, version, source, and chunk reference.
+- Pass only the relevant, approved context to the model.
+- Separate reference-knowledge citations from clinical-note evidence offsets; every accepted extracted claim still needs original-note evidence.
+
+A starting ranking can be evaluated as a normalized blend of semantic similarity, lexical relevance, and a small bounded priority adjustment. The weights and threshold must be validated on labelled examples rather than assumed correct.
+
+### 5.6 Central AI Settings
+- One settings page selects the approved provider/model and supported generation parameters for the whole application.
+- Provide Test Connection, Show Test Result, Save Draft, and Activate actions.
+- Test only with synthetic/non-sensitive input. Check connectivity, model availability, response status, schema output when required, latency, and errors.
+- Restrict provider options/endpoints to a documented allowlist. Arbitrary URLs are not accepted.
+- Mask API keys in the UI. Store credentials encrypted using an application encryption key kept in deployment environment secrets; never log keys.
+- Record configuration ID/version, who changed it, time, provider/model identifier, and test result. Never log the secret.
+- A successful connectivity test does not prove clinical accuracy or data-policy approval.
+- On invalid key, unsupported model, or quota exhaustion, preserve current active config unless the user explicitly confirms a tested new one. Do not switch providers silently.
+
+## 6. Proposed Technology Stack
+
+| Layer | Proposed technology | Reason / constraint |
 |---|---|---|
-| Clinical note input | Receives a note from the approved Mirai Labs dataset or local reviewer input. | `Assessment: No evidence of pneumonia. Diagnosis: hypertension.` |
-| Validate and preserve original | Checks the input and keeps the exact original note for later evidence checks. | The original sentence is not replaced by a rewritten sentence. |
-| Local masking + offset mapping | Masks identifying information locally before an approved external call and tracks how positions map to the original note. | If a name is replaced with `[NAME]`, the system must still know where cited evidence lies in the original note. |
-| Agent orchestrator | Chooses the next tool/pass and manages retries within time/call limits. | It calls extraction first, then retrieval and verification as required. |
-| Structured extraction | Proposes entities, statuses, attributes, and evidence spans. | It records pneumonia as a negated mention, not a present diagnosis. |
-| Schema + span validation | Checks required fields and whether the cited offsets point to the stated evidence in the original note. | A span outside the note or pointing to unrelated text fails validation. |
-| ICD-10 retrieval | Searches the supplied code table for diagnosis candidates only. | It ranks candidates for hypertension; it does not assign a procedure code. |
-| Independent verification | Checks evidence, status, contradictions, and possible omissions independently. | It checks that “No evidence of pneumonia” is not misread as current pneumonia. |
-| “Checks pass?” decision | Determines whether an item meets the evidence and verification rules. | A supported item can proceed; a failure is not automatically accepted. |
-| “Recoverable and budget remains?” decision | Retries only when a problem may be fixed and the approved retry budget is not exhausted. Otherwise the system rejects, abstains, or flags for review. | A malformed response may be retried once if allowed; unresolved disagreement goes to review. |
-| Reviewer UI and JSON export | Shows evidence and decisions, lets the reviewer accept/reject, and exports reviewed output. | The reviewer can inspect the source text and why an item was flagged. |
-| Evaluation harness | Compares results with labelled reference data and the naive baseline. | It calculates metrics; the diagram does not imply that targets have already been achieved. |
-| Dashed arrows to privacy-safe trace | Record process activity and decision outcomes, not a separate inference step. | Log which pass ran and its result without saving protected note text. |
+| Frontend | Django templates + HTMX + Bootstrap | No React; simple server-rendered dashboard, dynamic tables, forms, and review controls. |
+| Web/backend | Django / Python | Built-in ORM, migrations, admin, authentication, groups, and permissions fit a patient/encounter-centric application. |
+| Hosting | Render Free web service | Public demo URL; may sleep/cold-start, so show loading states and validate its current free limits. |
+| Relational database | Neon Free PostgreSQL | Persistent hosted relational store for users, patients, encounters, documents, notes, review records, and audit metadata. |
+| Vector retrieval | PostgreSQL pgvector on Neon | Store embeddings and run semantic search without a separate vector database service. |
+| File storage | Neon Object Storage candidate (S3-compatible) | Can separate uploads from application filesystem; private access and current free-plan status must be proven before selection. Supabase Storage Free is a fallback candidate if the primary choice fails tests. |
+| Embeddings | Local sentence-transformers model, candidate bge-small-en | Avoid paid embedding API; benchmark CPU/memory, relevance, and build time on free hosting. |
+| Keyword search | PostgreSQL full-text search | Search knowledge/ICD text alongside vector retrieval; compare results with semantic-only and lexical-only baselines. |
+| Image-to-text | Tesseract OCR | Open-source and no OCR API charge; only supports practical scope after quality and host-resource tests. |
+| Audio-to-text | Tested local CPU model or approved free-tier transcription endpoint | Free quotas and CPU/memory are constraints. No paid API or silent fallback. |
+| AI text generation | Provider/model adapter with selectable allowlisted provider/model | Doctor-facing central setting; provider use remains subject to current terms and approval. |
+| Schema validation | Pydantic plus custom evidence/offset checks | Validates structure and source support separately. |
+| RAG | Python service, metadata-filtered hybrid retrieval | Keeps retrieval logic explicit/testable and distinguishes reference knowledge, patient history, and ICD candidates. |
+| Traces/audit | Structured safe events stored in PostgreSQL | No keys or protected raw notes in operational traces. |
+| File validation | Allowlisted MIME/extensions, size limits, content checks | Treat uploads as untrusted input. |
+| Testing | pytest/Django tests and reproducible evaluation scripts | Test permissions, persistence, extraction metrics, retrieval, and quotas. |
+| Version control | Private GitHub | No SOW, real patient notes, credentials, or source uploads committed. |
 
-The orchestrator controls retries and decisions. A note may contain verified items and flagged items together; the system need not treat the entire note as correct just because one item passes.
+### Why Neon instead of Supabase?
+Neon is a PostgreSQL hosting provider, not an alternative database engine. Both Neon and Supabase provide hosted PostgreSQL; the architecture chooses Neon for the database and pgvector. It does not rely on Supabase's application authentication because Django handles login and role permissions. Neon Object Storage is a possible bundled file-storage choice, but because current official materials have described it as beta, its free quota, private access, and integration must be checked. Supabase Storage Free remains a fallback if Neon Object Storage does not meet those conditions. Avoid deploying both storage systems unless there is a demonstrated need.
 
-## 4. Processing and Acceptance Rules
+### Free-tier constraints
+- Current documented Neon Free limits include 0.5 GB database storage, 100 CU-hours per project, and 5 GB monthly public network transfer. Object Storage terms/allowance must be confirmed in the current console before relying on it.
+- Current Supabase Free documentation lists 500 MB database size, 1 GB storage, and 5 GB egress; projects can be paused under free-plan rules.
+- Render Free web services can sleep and use ephemeral local storage; do not treat the application filesystem as persistent.
+- AI APIs, OCR, and transcription must respect free quotas and input limits. The system must explain/defer on quota exhaustion and must not trigger paid fallback.
+- Keep synthetic demo data and monitor limits. Free tiers are suitable for a bounded evaluation demo, not a promise of unlimited or production-grade availability.
 
-1. **Preserve the original note.** Keep it as the source for span validation and UI highlighting.
-2. **Mask locally.** Before any approved external call, mask identifiers and map positions from masked text back to original-note character offsets.
-3. **Extract and validate.** Check the structured schema and verify that spans map to the original note.
-4. **Retrieve codes.** Search the supplied ICD-10 table for diagnosis candidates only; do not force a code when no candidate is sufficiently supported.
-5. **Verify independently.** Check whether evidence supports the item and whether the status, offsets, context, and contradictions are correct; also check for likely omissions.
-6. **Reconcile.** Accept only items that pass schema, offset, evidence and verification checks. Reject unsupported or contradicted items. Abstain when evidence/coding confidence is insufficient. Send unresolved items for review.
-7. **Trace safely.** Log tool calls, retry reasons and decisions without exposing protected information.
-8. **Review and export.** Allow the reviewer to accept/reject items, inspect reasons and export reviewed JSON.
+References:
+- Neon plans: https://neon.com/docs/introduction/plans
+- Neon Object Storage: https://neon.com/blog/building-neon-object-storage
+- Neon pgvector: https://neon.com/blog/optimizing-vector-search-performance-with-pgvector
+- Render free services: https://render.com/docs/free
+- Supabase billing: https://supabase.com/docs/guides/platform/billing-on-supabase
+- Supabase storage access: https://supabase.com/docs/guides/storage/buckets/fundamentals
 
-### Worked Example: Source Note → System Actions → Example Output
+## 7. Main Data Model (Logical Proposal)
 
-**Fictional source note (for explanation only):**
+- **User / DoctorProfile:** Django user ID, role/group, active status, profile metadata.
+- **Patient:** non-hardcoded patient record with internal ID and minimum necessary fields.
+- **PatientAccess:** relationship describing which doctors can access each patient, unless a simpler documented practice-wide permission model is approved.
+- **Encounter:** patient ID, encounter date, status, creating doctor, and links to encounter notes.
+- **ClinicalNote:** encounter ID, original text, note version/source, author, timestamps. Store only approved data; public demo records must be synthetic.
+- **ExtractionRun:** note/version ID, config-version ID, model identifier, status, latency, call count, safe trace reference.
+- **ExtractedItem:** type, entity, attributes, status, evidence text, original offsets, code candidates, verification result, reviewer decision.
+- **KnowledgeDocument:** owner, storage key, source filename, source type, title, category, tags, priority, status, version, extracted text, review/publication state.
+- **KnowledgeChunk:** document/version ID, chunk index/text, embedding vector, searchable text, metadata and source reference.
+- **ICDCode:** code, description and any supplied metadata from the approved canonical table; do not invent or externally substitute codes.
+- **AIConfiguration:** provider/model identifier, supported parameters, encrypted credential reference, active/test status, version and updated-by metadata. Never store API keys as plaintext.
+- **ReviewAction / AuditEvent:** who did what and when, entity/config identifiers, and safe result metadata.
 
-```text
-Assessment: No evidence of pneumonia. Diagnosis: hypertension. Medication: amlodipine 5 mg orally once daily. Allergy: penicillin.
-```
+This is a proposed schema. Final fields, indexes, retention, and access controls must be tested and approved.
 
-This shows how the same note moves through the system:
+## 8. Security and Reliability Controls
 
-| Source information | System action | Expected handling |
-|---|---|---|
-| “No evidence of pneumonia” | Extract the diagnosis mention, check negation and verify its evidence. | Preserve the mention as `negated`; do not treat pneumonia as a present diagnosis. |
-| “hypertension” | Extract the diagnosis, then search the supplied ICD-10 table. | Validate the source span and rank supported code candidates; do not invent a code. |
-| “amlodipine 5 mg orally once daily” | Extract medication name, dose, route and frequency. | Keep only attributes stated in the note and cite the original text. |
-| “penicillin” after “Allergy:” | Extract allergy information and verify the source context. | Record it as a documented allergy mention; do not infer extra details. |
+- Enforce authentication and permissions server-side for every patient, encounter, note, document, export, and configuration endpoint.
+- Test horizontal access control: Doctor A must not retrieve Doctor B's patient records unless explicitly authorised.
+- Keep knowledge-source retrieval and patient-history retrieval logically separate and scoped.
+- Validate uploads for type, size, content, and processing limits; store them privately. Do not use public object URLs for sensitive files.
+- Use short-lived signed file URLs if needed and verify the ownership/access decision before generating a link.
+- Avoid remote image/audio parsers that execute untrusted content. Use controlled subprocesses and timeouts for local OCR/transcription.
+- Keep original note text authoritative for offsets; test masking-to-original mapping, including repeated text occurrences.
+- Treat clinical note and uploaded knowledge text as untrusted input; document text must not override system instructions or provider policies.
+- Limit retries, time, file size, model call counts, token/audio duration, and ingestion jobs.
+- Ensure logs do not contain secrets, API keys, private file URLs, or protected note content.
+- Store secrets in deployment environment variables; use a separate encryption key for any credential encrypted at rest in the settings table.
+- For the free demo, use synthetic data. Do not claim clinical safety, regulatory compliance, or production readiness.
 
-**Illustrative structured output** (not actual model output and not yet the final agreed schema). For this example, offsets are zero-based, with the start included and the end excluded:
+## 9. Deployment and Implementation Gate
 
-```json
-{
-  "note_id": "example-001",
-  "items": [
-    {
-      "category": "diagnosis",
-      "entity": "pneumonia",
-      "status": "negated",
-      "evidence_text": "No evidence of pneumonia",
-      "start_offset": 12,
-      "end_offset": 36
-    },
-    {
-      "category": "diagnosis",
-      "entity": "hypertension",
-      "status": "present",
-      "evidence_text": "hypertension",
-      "start_offset": 49,
-      "end_offset": 61
-    },
-    {
-      "category": "medication",
-      "entity": "amlodipine",
-      "dose": "5 mg",
-      "route": "oral",
-      "frequency": "once daily",
-      "evidence_text": "amlodipine 5 mg orally once daily",
-      "start_offset": 75,
-      "end_offset": 108
-    },
-    {
-      "category": "allergy",
-      "entity": "penicillin",
-      "status": "documented",
-      "evidence_text": "penicillin",
-      "start_offset": 119,
-      "end_offset": 129
-    }
-  ]
-}
-```
-
-The offsets above point to the exact substrings in the fictional source note. In the actual implementation, the offset convention and field names must be finalized in the approved schema. ICD-10 codes are intentionally not shown here because candidates must come from the supplied reference table and then be verified.
-
-**Important:** “Negated” does not necessarily mean the mention must be erased. The system may preserve the negated mention with its status so a reviewer can understand the context; it must not misreport it as a current positive diagnosis.
-
-The note text is untrusted input: embedded instructions must not override system rules or change tool permissions. On provider failure or a rate limit, fail safely or defer processing; do not fabricate results or silently switch to an unapproved provider.
-
-## 5. Required Evaluation
-
-Evaluate against a naive single-prompt baseline using the same agreed evaluation notes. Define entity matching and partial-match rules before evaluation; report failures as well as successes.
-
-| Evaluation item | SOW requirement / target |
-|---|---|
-| Gold standard | At least 100 manually labelled notes across at least 10 specialties, labelled before prompt tuning; include diagnosis, medication and procedure spans/status, plus correct ICD-10 diagnosis labels. |
-| Entity extraction | Precision, recall and F1 for diagnoses, medications and procedures; diagnosis F1 ≥ 0.80 and medication F1 ≥ 0.85. |
-| Baseline | Proposed agent must measurably outperform the naive single-prompt baseline. |
-| Evidence faithfulness | 100% of accepted items must be supported by the cited original-note span; one fabricated/unsupported accepted item fails this target. Use programmatic offset checks plus sampled manual review. |
-| Status | At least 90% correct status for accepted diagnoses and medications. |
-| ICD-10 | Report top-1 and top-3; top-3 accuracy ≥ 75%. |
-| Contradictions | At least 20 modified notes; flag at least 80% of contradictions. |
-| Rare diagnoses | At least 10 cases; correct no-confident-match behaviour ≥ 80% where the supplied table/evidence does not support a reliable match. |
-| Adversarial cases | At least 10 notes with embedded instructions and/or protected information; 100% correct handling. |
-| Abstention / review | Report flagging precision and recall, and show whether flagged items are harder than accepted items. |
-| Operations | Median end-to-end latency < 30 seconds/note on the approved free-tier setup; report calls per note, retries and quota/cost observations. |
-| Error analysis | Explain at least three poor-performing cases. |
-
-These are acceptance targets, not measured results. Mark each target **Pass**, **Fail**, or **Not yet measured** only after evaluation. The annotation guideline and final evaluation split must be defined before prompt tuning.
-
-## 6. Privacy, Risks and Approval Gate
-
-- Keep raw-note handling local; do not commit the SOW, clinical datasets or patient records to GitHub.
-- Mask identifying information before any approved external model call. Masking alone does not guarantee that every identifier has been removed.
-- Review and obtain approval for provider data-use and retention terms before sending any project note to an external model.
-- Never expose protected information in traces, logs, exports or demos.
-- Preserve original offsets through masking and validate the mapping.
-- Confirm the actual required processing volume and account-specific model quota; two model calls per note can make free-tier throughput a constraint.
-- Do not reduce the required gold-standard or challenge-set sizes silently. Raise timeline, privacy, data-access or quota blockers with Mirai Labs.
-- The MVP excludes OCR/scanned or handwritten notes, procedure-code assignment, EHR/billing integration, cloud or multi-user deployment, fine-tuning, external clinical-note sourcing, paid API keys and GPU-dependent infrastructure.
-
-### Possible future extensions — not part of this MVP
-
-These are options for a later phase only. They do not change the current SOW scope and require written agreement from Mirai Labs before work begins.
-
-| Option | Potential benefit | Additional controls needed |
-|---|---|---|
-| OCR and document ingestion | Accept scanned clinical PDFs/images; handwriting support would need separate feasibility testing because recognition errors can be substantial. | Local processing where required, OCR confidence checks, page/region provenance, text-quality validation, and human review for uncertain output. Character offsets alone may not be enough; the output schema may also need page numbers and bounding boxes. |
-| Input-quality checks | Detect empty, truncated, duplicate or garbled notes before extraction. | Define validation rules and report rejected inputs without losing the original source. |
-| Review prioritization | Put low-confidence, contradictory or poorly supported items at the top of the review queue. | Calibrate confidence against labelled data; do not treat model confidence as proof of correctness. |
-| Reviewer feedback and error analytics | Record reviewer corrections and recurring failure types to guide later improvements. | Keep feedback privacy-safe and separate from the independent final test set; no automatic prompt tuning or fine-tuning without approval. |
-| Resumable batch processing | Resume interrupted runs and report progress when processing large approved datasets. | Track per-note status, retries and quota use without exposing protected note text. |
-
-**Recommendation:** Keep OCR as a documented future option, not an MVP feature. Start with printed/scanned documents before considering handwriting. If Mirai Labs later approves OCR, add a separate input-quality and OCR evaluation set, retain page-level evidence, and route low-confidence OCR results to human review.
-
-# Part II — Technology Stack and Justification
-
-## 7. Frontend, Backend, Database and Supporting Technologies
-
-The following stack is proposed for the local MVP. These are design choices, not implemented or approved components.
-
-| Layer | Proposed technology | Purpose and reason |
-|---|---|---|
-| **Frontend / reviewer UI** | **Streamlit** | Local interface for showing the original note, evidence highlights, extracted fields, diagnosis-code candidates, flagged items, trace and accept/reject controls. It avoids a separate React frontend for this single-reviewer MVP. |
-| **Backend / application logic** | **Python 3.12.x** | Handles note processing, validation, retrieval, verification, decisions, JSON export and evaluation. Python is a direct fit for NLP and evaluation; pin the exact version after compatibility testing. |
-| **Agent orchestration** | **Explicit Python agent loop** | Chooses tool calls, inspects results, applies bounded retries, reconciles disagreement, and decides whether to accept, reject, abstain or escalate. A small explicit loop is easier to inspect than a large orchestration framework. |
-| **LLM / model API** | **Provisional Groq API candidates, subject to approval** | Provides hosted model inference and structured output. Provider terms, model quality, current availability and account-specific free-tier quotas must be checked before use. |
-| **Database / local persistence** | **SQLite and local files** | SQLite can store limited local review metadata and evaluation results; local files can hold necessary configuration and evaluation artifacts. No separate database server is proposed. Do not store protected information in traces or commit patient records to GitHub. |
-| **Keyword retrieval** | **SQLite FTS5 with BM25 ranking** | Uses FTS5 to search text in the supplied ICD-10 table and BM25 to rank matching descriptions by relevance. Validate its benefit against a simpler keyword-only baseline. |
-| **Semantic retrieval / vector store** | **ChromaDB with a compatible local embedding model, candidate: bge-small-en** | Supports retrieval of conceptually related code descriptions when wording differs. This is a proposed option; similarity is not proof of clinical correctness. |
-| **Schema validation** | **Pydantic 2.x** | Checks required fields and value types. Additional checks are still needed for original offsets, evidence support and clinical meaning. |
-| **Local privacy processing** | **Rules plus spaCy NER** | Rules can detect predictable patterns; named-entity recognition can identify some context-dependent identifiers. Neither guarantees complete masking, so it must be tested. |
-| **Trace and logging** | **Structured JSON with masked data or safe metadata** | Records tool calls, outcomes, retries and decisions without exposing protected information. |
-| **Evaluation** | **Python scripts and automated tests** | Makes entity metrics, span checks, ICD-10 measures, challenge tests and latency/call measurements repeatable. |
-| **Version control** | **Git and private GitHub repository** | Tracks changes and supports the required private repository workflow. |
-
-**Layer summary:** Streamlit is the frontend; Python and the explicit agent loop form the backend/application logic; SQLite/local files provide local persistence; ChromaDB is a candidate vector store for semantic retrieval. The supplied ICD-10 table remains the source data for diagnosis-code candidates.
-
-Exact dependency versions and the final retrieval choice must be confirmed through compatibility checks and evaluation after approval.
-
-## 8. Model Candidates and Constraints
-
-Provider documentation was checked on **15 October 2026**. Recheck before implementation because availability and quotas can change.
-
-| Candidate | Proposed role | Important limitation |
-|---|---|---|
-| Groq `openai/gpt-oss-20b` | First candidate for structured extraction | Listed as supported with strict JSON-schema output; clinical quality still needs evaluation. |
-| Groq `qwen/qwen3.8-27b` | Candidate for independent verification | Listed as supported with strict JSON-schema output; verifier quality must be measured. |
-| Google `gemini-3.1-flash-lite` | Alternative if policy permits | Free-tier content-use terms require careful privacy review before any clinical note is sent. |
-
-**Provisional configuration:** evaluate `openai/gpt-oss-20b` for extraction and `qwen/qwen3.8-27b` for verification. This is not an approved or proven configuration.
-
-Groq's documentation reviewed for this plan listed free-tier limits of 1,000 requests/day for the proposed models, subject to account-specific limits. At two calls per note, that would theoretically allow up to 500 notes/day before retries or failures. Confirm whether the project needs to process all approximately 5,000 notes or an agreed evaluation subset; do not silently reduce scope.
-
-Provider and technical references:
-
-- Groq: [Supported models](https://console.groq.com/docs/models), [rate limits](https://console.groq.com/docs/rate-limits), [structured outputs](https://console.groq.com/docs/structured-outputs), [data controls](https://console.groq.com/docs/your-data), [deprecations](https://console.groq.com/docs/deprecations).
-- Google: [Gemini models](https://ai.google.dev/gemini-api/docs/models), [pricing and data-use terms](https://ai.google.dev/gemini-api/docs/pricing).
-- Tools: [Pydantic](https://docs.pydantic.dev/), [Streamlit](https://docs.streamlit.io/), [Chroma](https://docs.trychroma.com/), [spaCy](https://spacy.io/usage), [Python](https://docs.python.org/).
-
-Before implementation, confirm provider approval, current free-tier quotas, model IDs, dependency compatibility, the extraction/verification schemas, offset mapping, retrieval selection and safe traces.
-
-# Part III — Development Timeline
-
-## 9. Milestones
-
-| Date | Deliverable / work | Constraint |
-|---|---|---|
-| 13 Oct 2026 | Review SOW; identify requirements/questions; begin market research | Planning/research only. |
-| 13–14 Oct 2026 | Review products, open-source tools and papers | Record sources and limitations. |
-| 14 Oct 2026 | Research presentation | Present findings and gaps. |
-| **15 Oct, by 6:00 PM** | Submit solution, architecture, technology-stack rationale and timeline | Mark design choices as proposed. |
-| **16 Oct** | Formal architecture/technology review | No feature implementation before approval. |
-| 19 Oct | Inspect supplied dataset/code table; finalize annotation guidance; begin labelling; define naive baseline | Labelling must start before prompt tuning. |
-| 20 Oct | Continue toward 100 labelled notes/10 specialties; define schema, offsets and evaluation harness | Track coverage and annotation disagreements. |
-| 21 Oct | Implement approved local masking, input handling, extraction and schema validation | Test offset mapping and evidence rejection. |
-| 22 Oct | Implement ICD-10 keyword/semantic retrieval and no-confident-match | Use supplied table; monitor quota. |
-| 23 Oct | Implement verifier, bounded retries, reconciliation, abstention/escalation and safe trace; integrate reviewer controls | Test contradictions, omissions, retries and embedded instructions. |
-| 26 Oct | Complete UI/JSON export; run evaluation/challenge sets; analyze at least three failures; finalize README, user guide, 5–8 minute demo and defense materials | Report unmeasured targets honestly. |
-
-## 10. Schedule Risks
-
-The planned build window is six working days after the approval gate. It is tight for annotation, multi-pass extraction/verification, UI integration and full evaluation. Progress depends on timely dataset access, approved provider/data handling and sufficient free-tier quota.
-
-Track labelled-note count and specialty coverage daily. If a dependency threatens a required deliverable, raise it with Mirai Labs; do not silently remove required tests or claim unmeasured success.
+Before a real deployment:
+1. Confirm expanded scope with Mirai Labs in writing.
+2. Recheck Render and Neon free plan allowances and availability on the deployment day.
+3. Test Neon Object Storage from Python/boto3 and prove private access enforcement. If this fails, test Supabase Storage Free fallback. Select only after documented test results.
+4. Validate Neon pgvector support, Django database connection, migrations, file storage adapter, and pooled connection behaviour.
+5. Confirm model-provider terms/approval before sending any project notes or media externally.
+6. Configure environment variables, secure cookies, CSRF, HTTPS, allowed hosts, database migrations, a non-default administrator, upload limits, and error handling.
+7. Deploy synthetic data first; verify login, patient isolation, history persistence, RAG citations, settings, uploads, and restart/redeployment behaviour.
+8. Document hosted URL and safe evaluation credentials separately from the Git repository. Never commit secrets.
+9. If any quota/limit blocks a feature, surface it and defer processing; do not upgrade or switch to a paid service without approval.
 
 ---
 
-**Submission status:** This is a planning proposal. Architecture, model/provider choice and stack remain subject to Mirai Labs' formal approval.  
+**Status:** Proposed revised architecture. It is not evidence of implementation or formal scope/provider approval.
