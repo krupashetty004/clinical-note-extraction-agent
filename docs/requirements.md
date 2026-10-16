@@ -1,128 +1,192 @@
-# Confirmed Requirements (from Mirai Labs SOW)
+# Requirements Baseline and Proposed Scope Revision
 
-**Project:** AI-Powered Clinical Note Extraction and Coding Agent MVP  
-**Source:** Statement of Work, version 1.0, 13 October 2026  
-**Status:** Requirements transcription for planning; design decisions remain pending approval.
+**Project:** AI-Powered Clinical Note Extraction and Coding Agent  
+**Revision date:** 16 October 2026  
+**Status:** Revised product proposal; expanded scope and technology choices pending Mirai Labs approval.
 
-## 1. Functional Requirements
+> This document separates the original Statement of Work (SOW) from the requested product expansion. The new hosted doctor workspace, persistent patient records, role-based access, and multimodal knowledge ingestion conflict with parts of the original MVP scope. Do not assume the scope change is approved until Mirai Labs confirms it in writing.
 
-| ID | Requirement | Status |
+## 1. Original SOW Requirements — Preserve Unless Formally Changed
+
+The original SOW remains the source of truth for these requirements:
+
+- Accept English free-text clinical notes supplied by Mirai Labs.
+- Extract diagnoses, medications, procedures, allergies, and vital signs/key measurements.
+- Return supporting evidence and character offsets into the exact original note.
+- Validate structured output; a valid schema alone does not prove the claim is correct.
+- Retrieve and rank ICD-10 diagnosis candidates from the supplied code table using keyword and semantic retrieval; allow a no-confident-match outcome.
+- Extract procedure mentions, but do not assign procedure codes.
+- Run a separate verification pass for evidence support, original offsets, status, contradictions, and likely omissions.
+- Use a real, explicit agent/orchestrator loop with tool calls, bounded retries, reconciliation, abstention, human review, and safe traces.
+- Keep protected information out of traces, logs, demos, and repository commits.
+- Compare the proposed system with a naive single-prompt baseline.
+- Label at least 100 notes across at least 10 specialties before prompt tuning.
+- Preserve the SOW's entity, coding, contradiction, rare-diagnosis, adversarial, latency, and error-analysis acceptance targets in docs/evaluation-plan.md.
+- The original SOW excluded OCR/scanned or handwritten notes, cloud/multi-user deployment, EHR/billing integration, fine-tuning, paid API keys, and GPU-dependent infrastructure.
+
+## 2. Proposed Scope Expansion — Requested on 16 October 2026
+
+These requirements are an expanded product proposal and must be confirmed with Mirai Labs before implementation.
+
+### 2.1 Hosted doctor workspace
+
+- Provide a publicly reachable hosted demo URL using only free tiers.
+- Use a simple, responsive dashboard with a sidebar and a small number of clear sections.
+- Provide separate pages for dashboard overview, patients, encounters/clinical notes, knowledge base, activity/history, and AI/system settings.
+- Do not use React. The proposed UI is Django templates + HTMX + Bootstrap.
+- Use real persisted data and database-backed lists; do not hardcode patient lists, knowledge-base entries, models, or dashboard counters.
+
+### 2.2 Accounts, roles, and access controls
+
+- Authenticate users before exposing patient or knowledge records.
+- Proposed initial roles: Doctor and Administrator. Confirm whether more roles are needed.
+- Doctors can access only patients and records they are authorized to see.
+- Doctors can work with patient records, encounter history, notes, review results, the knowledge base, and the central AI configuration according to granted permissions.
+- Administrators can manage accounts and role assignments, system-wide settings, and audit activity.
+- Enforce authorization in backend views/services and database queries, not only by hiding UI elements.
+- Audit important changes to patient records, knowledge items, roles, and AI settings.
+
+### 2.3 Patient and encounter management
+
+- A doctor can search and open authorized patient records.
+- A patient record separates current encounters from previous encounters.
+- Each encounter has its own clinical notes, extraction runs, review outcomes, and timestamps.
+- Previous AI results remain historical; a new result must not silently overwrite the record of a previous encounter.
+- Display the source and date for information from previous encounters.
+- Patient-history retrieval must be scoped to the currently authorized patient; cross-patient retrieval is prohibited.
+- Do not automatically convert a historical mention into a current diagnosis or medication.
+
+This adds patient-record management beyond the original SOW's note-extraction MVP and requires explicit scope approval.
+
+### 2.4 Editable multimodal knowledge base and RAG
+
+- Doctors can add knowledge through the UI; the knowledge base must not be a hardcoded Python list or static collection.
+- Accept text entered in the UI and supported text-file uploads.
+- Accept image uploads and extract printed text using OCR, with a preview and correction step.
+- Accept audio/voice uploads and transcribe them using an approved free-tier speech-to-text provider or a tested local option.
+- Keep the original uploaded file in private object storage and keep source metadata, extracted text, versions, status, and permissions in the database.
+- Let doctors review and correct extracted/transcribed text before publishing it to searchable knowledge.
+- Chunk approved text, create embeddings, and store vectors in PostgreSQL with pgvector.
+- Support keyword and semantic retrieval, metadata filters, source citations, and doctor-defined priority.
+- Doctors can create, edit, version, deactivate, and re-index knowledge items.
+- Retrieval priority can influence ranking but cannot make an irrelevant or unsafe passage valid evidence.
+- Maintain separate logical scopes for reference knowledge and patient-specific history. Do not mix the two sources without explicit access filtering.
+- A reference document can provide context, but it must not be treated as proof that an entity appears in a patient's original note.
+
+### 2.5 Central AI/model settings — one simple place in the UI
+
+- Provide a central AI Settings page rather than exposing separate model configuration controls for every clinical task.
+- Authorized doctors can select an available provider/model, enter or update API credentials, set supported parameters, test the connection, and activate the selected configuration.
+- Default behaviour: the active global model configuration is used by the extraction and verification workflow in separate, differently instructed calls. An independently configured verifier model is not part of the initial UI unless approved as an additional requirement.
+- Test with synthetic/non-sensitive sample input before activation.
+- Check connectivity, model availability, response status, JSON/schema compatibility where required, latency, and returned errors.
+- Mask API keys in the UI, encrypt stored provider credentials using an application encryption key held in deployment environment secrets, and never log credentials.
+- Allowlist supported providers/endpoints; do not permit arbitrary URLs that could create server-side request forgery or other security issues.
+- Record who changed the configuration, when it changed, the selected provider/model, and test outcome—but never record the API key itself.
+- A successful connection test confirms only that a response was returned; it does not establish clinical quality.
+- Model changes must not silently bypass evidence validation, verifier checks, or evaluation requirements.
+
+### 2.6 Free-tier and deployment requirements
+
+- Target zero out-of-pocket cost for the evaluation deployment. Use free-tier hosting, managed storage/database allowances, open-source components, and free-tier model calls only.
+- Proposed deployment: Render Free web service + Supabase Free PostgreSQL/pgvector and private file storage, subject to current terms and quota verification.
+- Use PostgreSQL as the hosted persistence target. SQLite may be used for local tests only; do not depend on SQLite or uploaded files on the hosted application's ephemeral filesystem.
+- Use local/open-source embeddings and Tesseract OCR where they fit the host resource limits.
+- Audio transcription may use an approved free-tier API or a tested local CPU option. This component is a hosting/quota feasibility risk and must not be described as unlimited or guaranteed until tested.
+- Handle sleeping app cold starts, rate limits, free-tier storage limits, possible free-project pausing, and provider outages.
+- Do not add a paid service, paid API key, billing requirement, or automatic paid fallback.
+- If a free quota is exceeded, pause/defer the operation and show a clear error. Never silently switch providers.
+- A free tier does not promise unlimited availability or indefinite free service. Recheck terms and quotas at deployment time.
+
+### 2.7 Privacy and demonstration
+
+- Public hosted demos must use synthetic patient data by default.
+- Do not place confidential SOW content or clinical records in the public or private code repository.
+- Do not send Mirai Labs notes, patient data, uploaded images, or audio to an external provider until both the provider data terms and the exact use case are approved.
+- De-identification/masking does not guarantee that every identifier is removed.
+- Store uploaded files in private buckets, apply access checks, enforce upload size/type limits, and avoid exposing public object URLs.
+- Use short-lived signed download links where appropriate; validate file type and size; protect against malicious uploads.
+- Do not claim compliance or production clinical readiness merely because the demo is hosted.
+
+## 3. Functional Requirements Matrix
+
+| ID | Requirement | Baseline/status |
 |---|---|---|
-| FR-01 | Accept English free-text clinical notes from the dataset supplied by Mirai Labs. | Confirmed |
-| FR-02 | Extract diagnoses, procedures, medications, allergies, and key vital signs/measurements. | Confirmed |
-| FR-03 | Capture supporting evidence and character offsets referring to the original note. | Confirmed |
-| FR-04 | Return data using a strict structured schema; Pydantic is suggested by the SOW. | Confirmed |
-| FR-05 | For diagnoses, retrieve and rank ICD-10 candidates from the supplied code table using keyword and semantic search. | Confirmed |
-| FR-06 | Return a no-confident-match outcome when the supplied table/evidence does not support a reliable candidate. | Confirmed |
-| FR-07 | Perform a separate verification pass checking evidence support, original offsets, status, contradictions, and likely missed items. | Confirmed |
-| FR-08 | Implement a real agent loop with tool calls, bounded retries, reconciliation, abstention, and escalation—not only a fixed pipeline. | Confirmed |
-| FR-09 | Accept an extracted item only when it passes the agreed evidence and verification gates. | Confirmed |
-| FR-10 | Record model/tool calls, outcomes, retries, and decisions in structured traces without exposing protected information. | Confirmed |
-| FR-11 | Provide a local reviewer interface with evidence highlighting, structured output, ICD-10 candidates, accept/reject controls, flagged-item reasons, trace viewing, and JSON export. | Confirmed |
-| FR-12 | Support item-level human review and whole-note escalation when disagreement is high or the note is outside the approved domain. | Confirmed |
-| FR-13 | Handle rate limits and model/tool failures safely; do not fabricate results or silently switch to unapproved providers. | Confirmed |
-| FR-14 | Keep the original note as the source of truth for evidence highlighting, offset checks, and exported source spans. | Confirmed |
+| FR-01 | Accept English free-text clinical notes | Original SOW |
+| FR-02 | Extract diagnoses, medications, procedures, allergies, and vital signs/key measurements | Original SOW |
+| FR-03 | Provide evidence text and character offsets in the original note | Original SOW |
+| FR-04 | Validate strict structured outputs and source spans | Original SOW |
+| FR-05 | Retrieve/rank ICD-10 candidates for diagnoses from the supplied table | Original SOW |
+| FR-06 | Return no-confident-match where evidence/reference data is insufficient | Original SOW |
+| FR-07 | Independent verification of support, status, contradictions, offsets, and omissions | Original SOW |
+| FR-08 | Explicit orchestration loop with tool calls, bounded retries, reconciliation, abstention, and escalation | Original SOW |
+| FR-09 | Privacy-safe trace and graceful provider failure handling | Original SOW |
+| FR-10 | Reviewer UI, item-level accept/reject, flagged reasons, trace, JSON export | Original SOW |
+| EXP-01 | Hosted responsive dashboard; no React | Scope expansion pending approval |
+| EXP-02 | Authentication and role-based access | Scope expansion pending approval |
+| EXP-03 | Patient profiles, current/previous encounters, and history | Scope expansion pending approval |
+| EXP-04 | Doctor-managed dynamic knowledge records | Scope expansion pending approval |
+| EXP-05 | Text, image, and audio knowledge ingestion with review before publication | Scope expansion; OCR/audio feasibility and approval required |
+| EXP-06 | PostgreSQL + pgvector RAG with source/permission filtering | Scope expansion pending approval |
+| EXP-07 | Doctor-defined retrieval priority with relevance safeguards | Scope expansion pending approval |
+| EXP-08 | Central model/provider settings, test, activate, and audit changes | Scope expansion pending approval |
+| EXP-09 | Zero-cost hosted demo using free tiers only | Deployment target; quotas/availability limited |
+| EXP-10 | Persistent private file storage outside application filesystem | Scope expansion pending approval |
 
-## 2. Data, Privacy, and Safety Requirements
+## 4. Non-Functional Requirements
 
-| ID | Requirement | Status |
-|---|---|---|
-| SP-01 | Use the de-identified clinical transcription dataset and ICD-10 table provided by Mirai Labs; do not source external clinical notes. | Confirmed |
-| SP-02 | Dataset described in the SOW contains approximately 5,000 transcriptions across about 40 specialties. | Confirmed |
-| SP-03 | Mask identifying information locally before sending any note text to an external model. | Confirmed |
-| SP-04 | Do not display or store protected information in traces/logs; record masked payloads or safe metadata only. | Confirmed |
-| SP-05 | Treat note content as untrusted data and ignore instructions embedded within notes. | Confirmed |
-| SP-06 | Preserve the original-note offset mapping across masking/normalization transformations. | Required design control |
-| SP-07 | Keep the repository private and treat project materials as confidential. | Confirmed |
-| SP-08 | Do not commit the confidential SOW, clinical datasets, or patient records to the repository. | Confirmed |
-| SP-09 | External provider data-use and retention terms must be checked and acceptable to Mirai Labs before project notes are sent to the provider. | Approval dependency |
-| SP-10 | The MVP is local/localhost, for one reviewer, and English text notes only. | Confirmed |
+- **Evidence integrity:** accepted extraction items require valid evidence in the original note; do not infer missing clinical values.
+- **Authorization:** all patient, encounter, document, configuration, and history access is checked server-side.
+- **Tenant/patient isolation:** a request for one patient must not retrieve another patient's records.
+- **Traceability:** store source references, processing status, timestamps, model configuration identifier, and safe decision metadata.
+- **Privacy:** no secrets or protected note content in logs, traces, public storage, or GitHub.
+- **Persistence:** data must survive app restarts/redeployments within managed-service limits.
+- **Robustness:** support file validation, bounded retries, no-confident-match, error messages, and graceful rate-limit behaviour.
+- **Usability:** simple doctor-focused dashboard; common actions should not require editing configuration files.
+- **Free operation:** no feature may require a paid tier or paid API to complete the required demonstration; list quota-dependent limitations.
+- **Reproducibility:** pin tested dependencies and document setup/deployment steps after compatibility checks.
 
-## 3. Gold-Standard and Evaluation Requirements
+## 5. Original SOW Evaluation Targets — Preserve
 
-| ID | Requirement | SOW target |
-|---|---|---|
-| EV-01 | Manually labelled gold-standard dataset | At least 100 notes across at least 10 specialties |
-| EV-02 | Gold standard includes diagnoses, medications, and procedures with spans/status, plus correct ICD-10 codes for diagnoses | Required |
-| EV-03 | Create annotation guidelines | Required before prompt tuning |
-| EV-04 | Compare against a naive single-prompt baseline on the same agreed evaluation notes | Required |
-| EV-05 | Entity-level precision, recall, and F1 | Required for diagnoses, medications, and procedures |
-| EV-06 | Diagnosis extraction F1 | At least 0.80 |
-| EV-07 | Medication extraction F1 | At least 0.85 |
-| EV-08 | Compare proposed agent with naive baseline | Proposed system must perform measurably better |
-| EV-09 | Evidence/span faithfulness | 100% for accepted items; one fabricated accepted item fails this target |
-| EV-10 | Status correctness | At least 90% for accepted diagnoses and medications |
-| EV-11 | ICD-10 candidate retrieval | Top-3 accuracy at least 75%; report top-1 as well |
-| EV-12 | Rare-diagnosis test | At least 10 notes; correct no-confident-match behaviour at least 80% |
-| EV-13 | Contradiction test | At least 20 modified notes; at least 80% of contradictions flagged |
-| EV-14 | Adversarial test | At least 10 notes with embedded instructions and/or protected information; 100% correct handling |
-| EV-15 | Abstention/flagging quality | Report precision and recall and demonstrate flagged items are harder than accepted items |
-| EV-16 | Operational evaluation | Median end-to-end latency under 30 seconds per note on the free-tier setup |
-| EV-17 | Model usage | Report model calls per note, retries, and measured cost/quota observations |
-| EV-18 | Error analysis | Identify and explain at least three poor-performing cases |
-| EV-19 | Span validation method | Programmatic original-offset checks plus sampled manual review |
-| EV-20 | Reporting integrity | Mark targets pass/fail/not yet measured; do not claim unmeasured performance |
+The existing acceptance targets are retained: at least 100 gold-standard notes across at least 10 specialties, label before prompt tuning; diagnosis F1 >= 0.80; medication F1 >= 0.85; 100% evidence faithfulness for accepted items; >= 90% status correctness for accepted diagnoses and medications; ICD-10 top-3 >= 75%; >= 80% contradiction flagging on at least 20 cases; >= 80% correct rare-diagnosis no-confident-match behaviour on at least 10 cases; 100% correct handling of at least 10 adversarial cases; median end-to-end latency < 30 seconds/note; measurable improvement over a naive single-prompt baseline; report model calls/quota and explain at least three poor cases. These are targets, not measured results.
 
-All targets above are acceptance criteria from the SOW, not evidence of achieved performance.
+Expanded product evaluation must additionally test login/permissions, patient isolation, encounter history persistence, document CRUD/versioning, text/image/audio ingestion, indexing/re-indexing, RAG source attribution and ranking, global model settings, credential secrecy, and hosted restart/persistence behaviour. See docs/evaluation-plan.md.
 
-## 4. Scope Boundaries
+## 6. Scope Conflicts and Approval Gate
 
-### In scope
-- Extraction of diagnoses, procedures, medications, allergies, and vital signs/key measurements.
-- Original-source evidence spans and offsets.
-- ICD-10 diagnosis candidate retrieval only, using the supplied table.
-- Independent verification, an explicit agent loop, bounded retries, reconciliation, abstention, and escalation.
-- Local reviewer interface, structured traces, JSON export, and evaluation.
-- Gold-standard labelling, baseline comparison, required challenge tests, latency and usage reporting.
+The following requested features conflict with the original SOW and require a written scope decision:
+- Hosted web deployment rather than localhost-only.
+- Multiple accounts/role-based access rather than a single reviewer.
+- Patient profiles and longitudinal encounter history.
+- OCR/image and audio/voice ingestion.
+- User-managed knowledge base and vector retrieval beyond the supplied ICD-10 table.
+- User-editable provider/model settings.
+- Managed cloud database and object storage.
 
-### Explicitly excluded
+The revised docs describe a proposed product direction; they do not constitute approval. Before implementation with Mirai Labs data, obtain approval for scope, hosting, access controls, data residency/handling, and model-provider terms. Until then, use synthetic data for UI and hosting tests.
+
+## 7. Out of Scope Unless Newly Approved
+
+- EHR/billing integrations.
+- Automatic clinical decision-making, diagnosis confirmation, prescriptions, or treatment recommendations.
 - Procedure-code assignment.
-- EHR or billing integration.
-- OCR or scanned/handwritten note processing.
-- Cloud deployment and multi-user functionality.
-- Model fine-tuning.
-- External clinical-note sourcing.
-- Paid API keys and GPU-dependent infrastructure.
+- Public sharing of patient records.
+- Unrestricted arbitrary provider endpoints.
+- Paid APIs, paid hosting, GPU-required components, or silent paid fallback.
+- Automatic learning/training on patient records or doctor feedback.
+- OCR handwriting recognition beyond separately tested feasibility.
+- Multi-tenant production operation or claims of clinical/compliance certification.
 
-Any change to SOW scope requires written agreement from Mirai Labs.
+## 8. Pending Clarifications
 
-## 5. Technical and Project Constraints
+1. Does Mirai Labs approve the expanded patient-management, multi-user, hosted, and multimodal knowledge-base scope?
+2. Will the hosted demo use synthetic data only, or is there an approved route for de-identified project data?
+3. Are Doctor and Administrator the only roles, and who may change the global AI configuration?
+4. Must all 5,000 notes be processed, or is an approved evaluation subset sufficient for the prototype? Do not silently reduce the original requirement.
+5. Which provider terms are acceptable for clinical text and audio? Is any external transcription provider prohibited?
+6. How much document storage is expected within the free-tier allowance?
+7. What retention/deletion policy is required for patient records, source documents, audio, and traces?
+8. What recovery/backup expectations apply to a free-tier demo?
+9. What is the revised deadline/timeline for the expanded scope?
 
-| ID | Constraint | Status |
-|---|---|---|
-| PC-01 | Free-tier services only; no paid API keys or GPU supplied. | Confirmed |
-| PC-02 | Model examples in the SOW are references; alternatives may be researched and justified. | Confirmed by clarification |
-| PC-03 | Provider/model selection must reflect current availability, free-tier limits, output capability, privacy/data-use terms, and evaluation. | Required |
-| PC-04 | Exact dependency versions must be pinned only after compatibility checking. | Planning control |
-| PC-05 | Local model inputs/outputs and traces must not expose protected information. | Confirmed |
-| PC-06 | A one-command evaluation workflow and required project documentation must be delivered. | Confirmed |
-| PC-07 | No feature implementation before formal architecture/technology-stack approval. | Confirmed |
-
-## 6. Deliverables
-
-The SOW calls for:
-1. Architecture document with component responsibilities, diagram, one-note flow, technology justifications, extraction schema, verification approach, agent loop, rejected alternatives, and free-tier considerations.
-2. Day-by-day development timeline.
-3. Labelling guidelines and gold-standard dataset plan.
-4. Evaluation report with metrics, required challenge tests, baseline comparison, cost/latency, and failure analysis.
-5. README with one-command setup and evaluation instructions.
-6. User guide.
-7. A 5–8 minute demo video showing a clean note, contradiction, rare diagnosis, and evaluation results.
-8. Private GitHub repository with daily commits.
-
-## 7. Milestones
-
-| Date | Milestone |
-|---|---|
-| 13 Oct 2026 | SOW review, clarification questions, initial market research |
-| 14 Oct 2026 | Research presentation |
-| 15 Oct 2026, by 6:00 PM | Solution proposal, architecture, technology-stack justification, and timeline |
-| 16 Oct 2026 | Architecture review and formal approval gate |
-| Through 26 Oct 2026 | Approved implementation, testing, evaluation, documentation, demo, and final defense |
-
-## 8. Explicit Non-Goals Before Approval
-
-- No feature implementation or project model calls using clinical notes.
-- No claim that evaluation targets have been achieved before measurement.
-- No unapproved provider use.
-- No silent reduction of gold-standard or challenge-test sizes due to schedule or quota pressure.
+**Status:** Requirements baseline and requested additions documented; expanded scope, hosting, and data use are still pending formal Mirai Labs approval.
