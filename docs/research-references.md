@@ -98,6 +98,11 @@ Use the SOW's metric definitions and accepted evaluation data as the authoritati
 - HTMX: https://htmx.org/docs/
 - Bootstrap: https://getbootstrap.com/docs/
 - Tesseract OCR: https://github.com/tesseract-ocr/tesseract
+- pypdf — PDF text extraction: https://pypdf.readthedocs.io/en/latest/user/extract-text.html
+- pdf2image — render PDF pages to images: https://pdf2image.readthedocs.io/en/latest/overview.html
+- pdf2image / Poppler installation: https://pdf2image.readthedocs.io/en/latest/installation.html
+- Tesseract input formats and PDF limitation: https://tesseract-ocr.github.io/tessdoc/InputFormats.html
+- Django file-upload security: https://docs.djangoproject.com/en/6.0/topics/security/#user-uploaded-content
 - Sentence Transformers: https://www.sbert.net/
 - pgvector: https://github.com/pgvector/pgvector
 
