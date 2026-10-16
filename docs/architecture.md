@@ -55,7 +55,7 @@ flowchart TD
     REVIEW --> SAVE
     SAVE --> DASH
 
-    DASH --> KUP["Knowledge upload UI<br/>text / text files / images / audio"]
+    DASH --> KUP["Knowledge upload UI<br/>text / text files / PDF / images / audio"]
     KUP --> FILES["Private object storage<br/>Neon Object Storage candidate<br/>(must pass free-tier/privacy tests)"]
     KUP --> EXTRACT["Ingestion pipeline<br/>text parser + pypdf / render low-text PDF pages<br/>with pdf2image + Poppler / Tesseract OCR /<br/>approved or local speech-to-text"]
     FILES --> EXTRACT
@@ -163,6 +163,8 @@ A starting ranking can be evaluated as a normalized blend of semantic similarity
 | File storage | Neon Object Storage candidate (S3-compatible) | Can separate uploads from application filesystem; private access and current free-plan status must be proven before selection. Supabase Storage Free is a fallback candidate if the primary choice fails tests. |
 | Embeddings | Local sentence-transformers model, candidate bge-small-en | Avoid paid embedding API; benchmark CPU/memory, relevance, and build time on free hosting. |
 | Keyword search | PostgreSQL full-text search | Search knowledge/ICD text alongside vector retrieval; compare results with semantic-only and lexical-only baselines. |
+| PDF text extraction | pypdf | Extracts selectable text page by page without OCR; scanned/image-only pages require OCR fallback. Preserve page numbers. |
+| PDF page rendering for OCR | pdf2image + Poppler, only when needed | Converts only low/no-text PDF pages to images before OCR; test native dependency on Render Free. |
 | Image-to-text | Tesseract OCR | Open-source and no OCR API charge; only supports practical scope after quality and host-resource tests. |
 | Audio-to-text | Tested local CPU model or approved free-tier transcription endpoint | Free quotas and CPU/memory are constraints. No paid API or silent fallback. |
 | AI text generation | Provider/model adapter with selectable allowlisted provider/model | Doctor-facing central setting; provider use remains subject to current terms and approval. |
