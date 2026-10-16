@@ -33,6 +33,8 @@
 | File storage fallback | Supabase Storage Free, only if Neon storage fails acceptance tests | Known managed private object-storage alternative | Adds a second provider/project. Current documented free allowance is 1 GB; confirm policies and quota before use |
 | Embeddings | Local sentence-transformers model; candidate bge-small-en | Avoids paid embedding endpoint | Measure CPU, memory, cold-start/build time, embedding dimensions, and retrieval relevance on the target host |
 | AI text generation | Configurable provider/model adapter using approved free-tier inference | Allows central model selection from the UI without hardcoding a provider in workflow code | Provider selection/data terms/availability/quotas must be approved; no paid fallback |
+| PDF text extraction | pypdf | Extracts selectable text from ordinary PDFs page-by-page without OCR | Scanned/image-only pages need OCR; preserve page numbers and validate output quality |
+| PDF-to-image rendering | pdf2image + Poppler, only for low/no-text pages | Enables local OCR for scanned PDF pages | Poppler is an OS-level dependency that must be installed on Render; use page-count, DPI and timeout limits |
 | Image ingestion | Tesseract OCR | Open-source, no per-image API payment | Printed text only for initial support; check language, quality, CPU/memory and timeout limits. Handwriting is not promised |
 | Audio ingestion | Local CPU speech-to-text candidate, or an explicitly approved free-tier API | Supports doctor-uploaded voice notes into the knowledge base | Whisper-family local models can be too costly for small hosting memory/CPU; benchmark a tiny model before commitment. External transcription requires data approval and quota handling |
 | Structured schema | Pydantic | Validates extraction/verification response structure | Must supplement with evidence, offset, status, and meaning checks |
@@ -98,6 +100,7 @@ Knowledge must be managed through the UI and persisted in the database/storage; 
 
 Ingestion sources:
 - Typed text and supported text files.
+- PDFs -> pypdf text extraction page-by-page; render only scanned/low-text pages with pdf2image + Poppler and OCR them with Tesseract -> doctor preview/correction.
 - Images -> Tesseract OCR -> doctor preview/correction.
 - Audio/voice -> tested local speech-to-text or approved free API -> doctor preview/correction.
 
@@ -150,7 +153,7 @@ The target is zero out-of-pocket cost for a bounded evaluation demo—not unlimi
 - [ ] Doctor/Administrator permissions and patient-level access tests pass.
 - [ ] Synthetic patient/encounter data survive restart and redeploy tests.
 - [ ] Knowledge CRUD/version/deactivation and re-indexing pass.
-- [ ] OCR/audio components tested against actual free host CPU/memory limits.
+- [ ] PDF text extraction, scanned/mixed-page fallback, page-number provenance, Poppler installation, and OCR/audio components tested against free-host CPU/memory limits.
 - [ ] Model provider terms approved before any project note/media is sent externally.
 - [ ] Secrets, private files, traces, logs, and Git repository checked for leakage.
 - [ ] Gold-standard annotation and challenge sets meet original SOW minimum sizes.
@@ -167,6 +170,8 @@ The target is zero out-of-pocket cost for a bounded evaluation demo—not unlimi
 | File storage | Neon Object Storage Free | Proposed, private-access test pending |
 | File fallback | Supabase Storage Free | Contingency only |
 | Embeddings | Local sentence-transformer candidate | Needs benchmark |
+| PDF text extraction | pypdf | Needs benchmark on digital and mixed PDFs |
+| PDF page rendering | pdf2image + Poppler only for OCR fallback | Needs deployment smoke test |
 | OCR | Tesseract | Needs benchmark |
 | Voice transcription | Local CPU or approved free-tier endpoint | Needs feasibility/approval |
 | LLM provider/model | Configurable allowlisted adapter | Pending Mirai Labs approval |
