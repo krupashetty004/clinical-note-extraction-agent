@@ -61,10 +61,12 @@ This adds patient-record management beyond the original SOW's note-extraction MV
 ### 2.4 Editable multimodal knowledge base and RAG
 
 - Doctors can add knowledge through the UI; the knowledge base must not be a hardcoded Python list or static collection.
-- Accept text entered in the UI and supported text-file uploads.
-- Accept image uploads and extract printed text using OCR, with a preview and correction step.
-- Accept audio/voice uploads and transcribe them using an approved free-tier speech-to-text provider or a tested local option.
-- Keep the original uploaded file in private object storage and keep source metadata, extracted text, versions, status, and permissions in the database.
+- Accept text entered in the UI and supported text-file uploads, plus PDF documents (including multi-page PDFs) in the knowledge base.
+- Accept image uploads and PDF files. Extract selectable text from normal PDFs first; use page-by-page OCR only for scanned/image-only PDF pages or image uploads. Show extracted text for doctor preview and correction before publication.
+- Accept audio/voice uploads and transcribe them using an approved free-tier speech-to-text provider or a tested local option; show the transcript for doctor review before publication.
+- Keep the original uploaded file (including PDF) in private object storage and keep source metadata, extracted text, page-level provenance where relevant, versions, status, and permissions in the database.
+- For PDF extraction, use a simple two-stage flow: parse selectable text first (candidate: pypdf); if a page yields little/no text, render only that page to an image (candidate: pdf2image + Poppler) and run Tesseract OCR. Preserve page numbers in the extracted-text metadata.
+- Enforce configurable file-size and PDF page-count limits, processing timeouts, and safe failure states. Do not publish if extraction fails or OCR output has not been reviewed.
 - Let doctors review and correct extracted/transcribed text before publishing it to searchable knowledge.
 - Chunk approved text, create embeddings, and store vectors in PostgreSQL with pgvector.
 - Support keyword and semantic retrieval, metadata filters, source citations, and doctor-defined priority.
@@ -126,7 +128,7 @@ This adds patient-record management beyond the original SOW's note-extraction MV
 | EXP-02 | Authentication and role-based access | Scope expansion pending approval |
 | EXP-03 | Patient profiles, current/previous encounters, and history | Scope expansion pending approval |
 | EXP-04 | Doctor-managed dynamic knowledge records | Scope expansion pending approval |
-| EXP-05 | Text, image, and audio knowledge ingestion with review before publication | Scope expansion; OCR/audio feasibility and approval required |
+| EXP-05 | Text, image, PDF, and audio knowledge ingestion with review before publication | Scope expansion; PDF/OCR/audio feasibility and approval required |
 | EXP-06 | PostgreSQL + pgvector RAG with source/permission filtering | Scope expansion pending approval |
 | EXP-07 | Doctor-defined retrieval priority with relevance safeguards | Scope expansion pending approval |
 | EXP-08 | Central model/provider settings, test, activate, and audit changes | Scope expansion pending approval |
@@ -150,7 +152,7 @@ This adds patient-record management beyond the original SOW's note-extraction MV
 
 The existing acceptance targets are retained: at least 100 gold-standard notes across at least 10 specialties, label before prompt tuning; diagnosis F1 >= 0.80; medication F1 >= 0.85; 100% evidence faithfulness for accepted items; >= 90% status correctness for accepted diagnoses and medications; ICD-10 top-3 >= 75%; >= 80% contradiction flagging on at least 20 cases; >= 80% correct rare-diagnosis no-confident-match behaviour on at least 10 cases; 100% correct handling of at least 10 adversarial cases; median end-to-end latency < 30 seconds/note; measurable improvement over a naive single-prompt baseline; report model calls/quota and explain at least three poor cases. These are targets, not measured results.
 
-Expanded product evaluation must additionally test login/permissions, patient isolation, encounter history persistence, document CRUD/versioning, text/image/audio ingestion, indexing/re-indexing, RAG source attribution and ranking, global model settings, credential secrecy, and hosted restart/persistence behaviour. See docs/evaluation-plan.md.
+Expanded product evaluation must additionally test login/permissions, patient isolation, encounter history persistence, document CRUD/versioning, text/image/PDF/audio ingestion (including selectable-text and scanned/mixed PDFs), indexing/re-indexing, RAG source attribution and ranking, global model settings, credential secrecy, and hosted restart/persistence behaviour. See docs/evaluation-plan.md.
 
 ## 6. Scope Conflicts and Approval Gate
 
@@ -183,7 +185,7 @@ The revised docs describe a proposed product direction; they do not constitute a
 2. Will the hosted demo use synthetic data only, or is there an approved route for de-identified project data?
 3. Are Doctor and Administrator the only roles, and who may change the global AI configuration?
 4. Must all 5,000 notes be processed, or is an approved evaluation subset sufficient for the prototype? Do not silently reduce the original requirement.
-5. Which provider terms are acceptable for clinical text and audio? Is any external transcription provider prohibited?
+5. Which provider terms are acceptable for clinical text and audio? Is any external transcription provider prohibited? For PDF knowledge ingestion, is printed text sufficient for the initial release, or are scanned PDFs required as well?
 6. How much document storage is expected within the free-tier allowance?
 7. What retention/deletion policy is required for patient records, source documents, audio, and traces?
 8. What recovery/backup expectations apply to a free-tier demo?
