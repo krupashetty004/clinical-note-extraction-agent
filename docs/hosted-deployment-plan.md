@@ -50,7 +50,7 @@ Before hosting:
 
 ## 4. Configure Neon Object Storage
 
-1. Create a private bucket for source uploads (private by default; do not make patient/media buckets public).
+1. Create a private bucket for source uploads (private by default; do not make patient/media buckets public). Allow `application/pdf` for knowledge-base uploads along with explicitly supported text, image, and audio types.
 2. Obtain the S3-compatible endpoint, region and credentials from the Neon console.
 3. Put these values into Render environment variables, such as:
    - `AWS_ENDPOINT_URL_S3`
@@ -134,7 +134,7 @@ The following depend on actual implementation and free-provider accounts:
 - Neon Object Storage access method, private bucket policy, and Python/boto3 compatibility.
 - Render build/start configuration after Django package names are set.
 - Local embedding model install/runtime and memory use on the free web instance.
-- OCR language/quality settings and audio model feasibility.
+- PDF parser/page provenance and Poppler installation, OCR language/quality settings, and audio model feasibility.
 - Current provider model IDs, privacy terms, free quota, and acceptance by Mirai Labs.
 - Any needed fallback, if a primary free service does not pass tests.
 
