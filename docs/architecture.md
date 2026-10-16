@@ -177,7 +177,7 @@ A starting ranking can be evaluated as a normalized blend of semantic similarity
 Neon is a PostgreSQL hosting provider, not an alternative database engine. Both Neon and Supabase provide hosted PostgreSQL; the architecture chooses Neon for the database and pgvector. It does not rely on Supabase's application authentication because Django handles login and role permissions. Neon Object Storage is the preferred bundled file-storage choice; current official documentation marks it generally available and lists 5 GB per project on the Free plan. Its private access, quota, and integration still need an implementation test. Supabase Storage Free remains a fallback if Neon Object Storage does not meet those conditions. Avoid deploying both storage systems unless there is a demonstrated need.
 
 ### Free-tier constraints
-- Current documented Neon Free limits include 0.5 GB database storage, 100 CU-hours per project, and 5 GB monthly public network transfer. Object Storage terms/allowance must be confirmed in the current console before relying on it.
+- Current Neon Free limits checked on 16 October 2026 include 1 GB PostgreSQL storage/project, 100 CU-hours/project/month, 5 GB public network transfer/project/month, and 5 GB Object Storage/project. Recheck quotas before deployment.
 - Current Supabase Free documentation lists 500 MB database size, 1 GB storage, and 5 GB egress; projects can be paused under free-plan rules.
 - Render Free web services can sleep and use ephemeral local storage; do not treat the application filesystem as persistent.
 - AI APIs, OCR, and transcription must respect free quotas and input limits. The system must explain/defer on quota exhaustion and must not trigger paid fallback.
