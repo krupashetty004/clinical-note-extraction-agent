@@ -89,7 +89,7 @@ This adds patient-record management beyond the original SOW's note-extraction MV
 ### 2.6 Free-tier and deployment requirements
 
 - Target zero out-of-pocket cost for the evaluation deployment. Use free-tier hosting, managed storage/database allowances, open-source components, and free-tier model calls only.
-- Proposed deployment: Render Free web service + Neon Free PostgreSQL with pgvector. Neon Object Storage is the preferred file-storage candidate, but its current free allowance, service status, private-bucket controls, and Python/S3 compatibility must be validated before adoption. If it does not satisfy these checks, evaluate Supabase Storage Free as a fallback without changing the database choice.
+- Proposed deployment: Render Free web service + Neon Free PostgreSQL/pgvector and Neon Object Storage. Official Neon material checked 16 October 2026 lists Object Storage as generally available, S3-compatible, and 5 GB/project on Free. Validate actual quota, private-bucket access, and Python/S3 integration before use. If those checks fail, evaluate Supabase Storage Free as a fallback without changing the Neon database choice.
 - Use PostgreSQL as the hosted persistence target. SQLite may be used for local tests only; do not depend on SQLite or uploaded files on the hosted application's ephemeral filesystem.
 - Use local/open-source embeddings and Tesseract OCR where they fit the host resource limits.
 - Audio transcription may use an approved free-tier API or a tested local CPU option. This component is a hosting/quota feasibility risk and must not be described as unlimited or guaranteed until tested.
