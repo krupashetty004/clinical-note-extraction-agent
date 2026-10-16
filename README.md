@@ -52,6 +52,7 @@ The requested hosted deployment, multi-user roles, patient history, OCR/audio kn
 | `docs/technology-stack.md` | Justification for Django, Render, Neon PostgreSQL/pgvector, Object Storage and AI options |
 | `docs/development-timeline.md` | Revised milestone plan and expanded-scope risks |
 | `docs/evaluation-plan.md` | Original SOW metrics plus tests for permissions, patient isolation, uploads, RAG, settings and deployment |
+| `docs/hosted-deployment-plan.md` | Free-tier Render/Neon deployment, private object storage, environment configuration and smoke tests |
 | `docs/research-references.md` | Primary research, official tool and current hosting/quota references |
 
 ## Confidentiality and Safe Demo
