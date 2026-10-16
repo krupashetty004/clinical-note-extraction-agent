@@ -28,8 +28,8 @@ The application is assistive. It does not autonomously confirm diagnoses, prescr
 ### Requested expansion — pending scope approval
 - Hosted doctor dashboard with login and role-based permissions.
 - Patient profiles, encounter history, previous/current notes, review history, and access controls.
-- Dynamic doctor-managed knowledge base supporting text, text files, images and voice/audio.
-- OCR/speech-to-text ingestion with preview/correction before indexing.
+- Dynamic doctor-managed knowledge base supporting typed text, text files, PDFs (including multi-page PDFs), images, and voice/audio.
+- PDF text extraction with page-by-page OCR fallback for scanned pages, image OCR, and speech-to-text; all extracted content is previewed/corrected before indexing.
 - RAG across approved reference knowledge and separately scoped patient history.
 - Doctor-set knowledge priority, constrained by relevance and permissions.
 - Central UI page for selecting/testing/activating the active provider/model and supported parameters.
@@ -48,7 +48,7 @@ These expansions must not silently replace the SOW's acceptance targets or allow
 6. **Extraction pipeline:** Mask locally, run structured extraction, validate schema/spans, retrieve ICD candidates, verify independently, and reconcile.
 7. **Review:** Show source evidence highlights, current/historical/negated/uncertain status, candidate codes, flagged reasons and trace-safe activity. Let the doctor accept/reject/flag items.
 8. **Save:** Persist the reviewed result as part of that encounter without silently overwriting the original note or previous processing run.
-9. **Knowledge Base:** Add reference material, preview/correct OCR or transcription, publish/edit/version/deactivate it, and set its metadata/priority.
+9. **Knowledge Base:** Add text, text files, PDFs, images, and audio; preview/correct extracted text or transcription; publish/edit/version/deactivate records; and set metadata/priority.
 10. **RAG:** Retrieve permitted, relevant knowledge and source citations; keep reference knowledge distinct from patient-note evidence and patient-specific history.
 11. **AI Settings:** Configure the active provider/model centrally, test using synthetic inputs, and activate only a successful/approved configuration.
 12. **History/export:** Inspect prior runs and review actions; download reviewed JSON if authorized.
@@ -82,9 +82,9 @@ flowchart TD
     REVIEW --> SAVE
     SAVE --> PAT
 
-    DASH --> UPLOAD["Knowledge upload UI<br/>text / images / audio"]
+    DASH --> UPLOAD["Knowledge upload UI<br/>text / text files / PDF / images / audio"]
     UPLOAD --> STORAGE[("Neon Object Storage<br/>private S3-compatible bucket")]
-    UPLOAD --> EXTRACT["Text parser / Tesseract OCR /<br/>approved or local speech-to-text"]
+    UPLOAD --> EXTRACT["Text parser + pypdf / PDF page renderer + Tesseract OCR /<br/>image OCR / approved or local speech-to-text"]
     STORAGE --> EXTRACT
     EXTRACT --> EDIT["Doctor preview and correction"]
     EDIT --> EMBED["Chunk + local embeddings"]
@@ -125,11 +125,11 @@ A valid JSON object can still contain fabricated or unsupported information; sch
 1. Doctor enters text or uploads supported text, image, or audio.
 2. Validate file type/content/size and reject unsupported or unsafe content.
 3. Store the original uploaded object privately. Create a metadata record with owner, source, type, status, version, category, tags and priority.
-4. Extract text directly, run OCR on images, or transcribe audio using a tested local component or an approved free-tier API.
+4. Parse selectable PDF text page by page with pypdf. For pages with little/no selectable text, render only those pages to images using pdf2image + Poppler and run Tesseract OCR. OCR images and transcribe audio using a tested local component or an approved free-tier API.
 5. Show extracted text/transcription to the doctor for correction and approval before publication.
 6. Chunk the approved text. Generate embeddings using a local sentence-transformer model and store vectors/chunk metadata in pgvector.
 7. Keep document version and chunk lineage, and update/remove stale vectors when the document is edited or deactivated.
-8. Surface OCR/transcription failures, embedding failures, and quota limits; don't publish incomplete content silently.
+8. Keep PDF page numbers in source metadata, enforce PDF page/file-size limits and timeouts, and surface parsing/OCR/transcription/embedding failures; never publish incomplete content silently.
 
 ### Retrieval
 - Enforce user permissions, document status, tenant/patient scope and other metadata filters before ranking.
@@ -178,6 +178,8 @@ Secrets must not be returned after storage. Use deployment environment secrets f
 | File-storage contingency | Supabase Storage Free if Neon Object Storage fails a documented test |
 | Local embeddings | Sentence-transformers candidate bge-small-en, subject to CPU/memory tests |
 | Keyword search | PostgreSQL full-text search |
+| PDF text extraction | pypdf | Extracts selectable text from ordinary PDFs without OCR; page-wise OCR fallback is needed for image-only/scanned pages. |
+| PDF page rendering for OCR | pdf2image + Poppler (only when needed) | Converts only pages lacking usable text to images for Tesseract; adds a native dependency, so validate on Render Free. |
 | OCR | Tesseract |
 | Audio transcription | Tested local CPU option or approved free-tier service |
 | Schema | Pydantic + custom evidence and offset validators |
@@ -195,7 +197,7 @@ The target is zero out-of-pocket cost for a limited demo, not guaranteed unlimit
 - Render Free provides a public service URL but sleeps after inactivity and has ephemeral local storage. It may cold-start when the evaluator first opens the link.
 - Neon Free documentation reviewed on 16 October 2026 lists 1 GB PostgreSQL storage/project, 100 CU-hours/project/month, and 5 GB public network transfer/project/month. Neon Object Storage is listed as 5 GB/project on the Free plan. Recheck before deployment.
 - Keep all uploads in external object storage, not Render's local filesystem.
-- Enforce upload-size limits; restrict large audio files and expensive OCR/transcription.
+- Enforce upload-size and PDF page-count limits; restrict large audio files and expensive OCR/transcription. Use direct PDF text extraction first and OCR only the pages that need it.
 - Local embedding/OCR/audio models must fit the free host's CPU and memory. If not, choose a smaller tested model or use an approved free-tier API; never silently use paid services.
 - On quota exhaustion, show a useful message, defer processing, and retain safe state for retry.
 - Public demo should use synthetic data and contain no secrets or private project documents.
@@ -214,7 +216,7 @@ New product-specific checks:
 - Login/logout and role permissions.
 - Doctor cannot access an unauthorized patient's record, encounter, note, source file, history, or export.
 - Current and previous encounters persist correctly across app restart/redeploy.
-- Upload validation, private file access, OCR/transcription preview/correction, and rejected-upload handling.
+- Upload validation, private file access, PDF text/page provenance, scanned-page OCR preview/correction, audio transcription review, and rejected-upload handling.
 - Knowledge CRUD, versioning, deactivation, re-indexing, metadata filters, and citation to the correct source.
 - RAG priority cannot override permission filters or allow irrelevant text to win.
 - Provider/model configuration can be tested, saved, activated, and audited without exposing credentials.
