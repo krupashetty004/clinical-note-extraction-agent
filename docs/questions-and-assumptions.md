@@ -14,7 +14,7 @@
 
 | ID | Question | Why it matters | Proposed interim approach |
 |---|---|---|---|
-| Q-01 | Does Mirai Labs approve the expanded hosted product, including multiple accounts, patient records/history, RAG knowledge-base management, and image/audio ingestion? | These features conflict with the original localhost, one-reviewer, text-only scope and OCR/cloud/multi-user exclusions. | Use synthetic data only; get written scope approval before implementing expanded features against project data. |
+| Q-01 | Does Mirai Labs approve the expanded hosted product, including multiple accounts, patient records/history, RAG knowledge-base management, and text/PDF/image/audio ingestion? | These features conflict with the original localhost, one-reviewer, text-only scope and OCR/cloud/multi-user exclusions. | Use synthetic data only; get written scope approval before implementing expanded features against project data. |
 | Q-02 | May de-identified clinical data ever be stored in the public hosted demo? Which hosting region/providers are acceptable? | De-identification/masking is not a guarantee of anonymity, and hosting changes data exposure. | Public deployment uses synthetic patients/notes only until explicitly approved. |
 | Q-03 | Which provider may process note text, uploaded images, and audio? Are external transcription/model APIs allowed? | Each provider may have different retention/data-use terms and regional handling. | Keep providers provisional; verify and obtain approval before sending project data. |
 | Q-04 | Must the prototype process all ~5,000 notes or an explicitly approved subset? | Free-tier API and CPU limits may constrain throughput. | Do not silently reduce the requirement; request a scope/volume decision. |
@@ -37,7 +37,7 @@
 | A-05 | Doctors can manage knowledge records from the UI; additions update the index rather than train the LLM. | Automatic model training would add scope and privacy concerns. |
 | A-06 | One central active model configuration is used for separate extraction and verification passes, with different instructions. | Mirai Labs may require a distinct verifier model or per-task configuration. |
 | A-07 | Reference knowledge, ICD-10 data, current note evidence, and patient history are separate logical sources. | Blending these sources can introduce unsupported claims or cross-patient disclosure. |
-| A-08 | OCR supports printed text first; handwriting is not included without separate feasibility testing. | More advanced document processing needs additional models and validation. |
+| A-08 | Knowledge-base ingestion supports digital PDFs and scanned/mixed PDFs through selectable-text extraction plus conditional OCR; handwriting is not included without separate feasibility testing. | More advanced document processing needs additional models and validation. |
 | A-09 | Audio transcription will use a tested small local model or approved free-tier endpoint. | Free hosted CPU/memory or API quota may not support the desired audio duration/quality. |
 | A-10 | Public demo and initial deployment use synthetic records. | No project/real patient data may be used until an approved data arrangement exists. |
 
@@ -48,7 +48,7 @@
 3. Test PostgreSQL pgvector setup, indexing, hybrid keyword/vector ranking, and relevance thresholds.
 4. Validate Neon Object Storage private bucket and Python/S3 upload, download, delete and short-lived access handling.
 5. Set model provider allowlist, encrypted credential storage, configuration versioning and test/activate workflow.
-6. Choose OCR language/settings and upload limits.
+6. Choose supported PDF page count, file size, OCR language/settings, rendering DPI, and processing timeouts.
 7. Test audio transcription feasibility; do not assume larger Whisper models fit a free web service.
 8. Set retry, latency and request-budget rules.
 9. Define patient-level authorization and audit event policies.
@@ -62,6 +62,7 @@
 - A reference knowledge document cannot prove that an entity was written in the current note.
 - Patient-history RAG is constrained to the selected patient and user permissions.
 - Provider/model changes never bypass evidence validation or trigger an automatic paid fallback.
+- PDF knowledge ingestion uses selectable-text extraction first and only runs OCR on pages that need it; page provenance is retained and extracted text must be reviewed before publication.
 - API keys are never shown in full after saving and never appear in traces, logs, error responses, or GitHub.
 - Private files are not made public by default.
 - Clinical note text and uploaded documents are untrusted inputs; embedded instructions do not change system policy.
