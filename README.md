@@ -22,7 +22,8 @@ The revised product proposal adds a hosted doctor's workspace with role-based ac
 - **File storage:** Neon Object Storage Free, S3-compatible/private; must be smoke-tested
 - **Storage contingency:** Supabase Storage Free only if Neon Object Storage fails documented tests
 - **Embeddings:** Local sentence-transformers candidate, benchmarked against the free host's CPU/memory
-- **OCR:** Tesseract for the initial printed-text scope
+- **PDF parsing:** pypdf for selectable text; page-by-page PDF OCR fallback with pdf2image + Poppler + Tesseract
+- **Image OCR:** Tesseract for the initial printed-text scope
 - **Audio transcription:** A tested local CPU option or an explicitly approved free-tier API
 - **LLM:** Central provider/model adapter with allowlisted models and free-tier usage controls
 
