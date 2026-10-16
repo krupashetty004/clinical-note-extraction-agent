@@ -11,7 +11,9 @@
 - **Database/vector search:** Neon Free PostgreSQL with pgvector.
 - **File storage:** Neon Object Storage, private S3-compatible bucket.
 - **Embeddings:** local sentence-transformer model, after CPU/memory measurement.
-- **OCR:** Tesseract for supported printed text.
+- **PDF text extraction:** pypdf for selectable text, page by page.
+- **PDF scanned-page fallback:** pdf2image + Poppler to render pages with little/no text, then Tesseract OCR. This is conditional; do not OCR every PDF page unnecessarily.
+- **OCR for standalone images:** Tesseract for supported printed text.
 - **Audio transcription:** a tested small local CPU model or approved free-tier endpoint; no paid fallback.
 - **LLM:** central allowlisted provider/model configuration, free-tier only.
 
@@ -74,7 +76,7 @@ Deployment settings should come from environment variables, not hardcoded litera
 - Object-storage endpoint/region/access credentials/bucket variables.
 - A distinct application encryption key for stored provider credentials, if editable API keys are retained in the database.
 - Approved model provider and API key values (or encrypted credential references).
-- Upload size, audio duration, model call and request-time limits.
+- Upload size, PDF page count, rendered-page DPI, PDF/OCR processing timeout, audio duration, model call and request-time limits.
 
 Use secure cookies/HTTPS protections and CSRF validation. Never print environment variables or raw credentials in logs, HTML, error reports, or trace events. Avoid placing API keys in client-side JavaScript or HTML.
 
@@ -98,7 +100,7 @@ Build and static collect must not require credentials for an external model call
 - Render ephemeral filesystem: no SQLite database, uploaded files, or irreplaceable state on local disk.
 - Neon DB/Object Storage quotas: measure and document usage. Restrict upload size/audio duration; clean up only according to documented retention rules.
 - LLM limits: count requests/tokens; use bounded retries; do not retry indefinitely.
-- Embedding/OCR/audio CPU memory: process limited-size files with timeouts; return visible pending/failed status for work that exceeds available resources.
+- PDF parsing/rendering, embedding/OCR/audio CPU memory: process limited-size files with timeouts; return visible pending/failed status for work that exceeds available resources.
 - Provider failure/quota: defer the task and keep its state; never fabricate an output, switch providers silently, or call a paid service.
 - Database connectivity failure: show safe unavailable status; don't expose connection strings or SQL secrets.
 - Never state “always available” or “production ready” based on a free hosted demo.
@@ -109,9 +111,9 @@ Build and static collect must not require credentials for an external model call
 - [ ] Anonymous users cannot access protected pages.
 - [ ] Doctor A cannot access Doctor B's synthetic patients/encounters/files unless explicitly permitted.
 - [ ] Patient/encounter/note data survives web-service restart/redeploy.
-- [ ] Uploaded synthetic image, text file and audio object survive web-service restart.
+- [ ] Uploaded synthetic image, text, PDF, and audio objects survive web-service restart.
 - [ ] Storage files remain private; guessed keys do not disclose content.
-- [ ] OCR/transcription text can be previewed and corrected before publishing knowledge.
+- [ ] Selectable PDF text, scanned/mixed PDF pages, image OCR and audio transcription can be previewed/corrected before publishing knowledge; page references are retained for PDFs.
 - [ ] Knowledge edits/deactivation refresh or remove stale embeddings/chunks.
 - [ ] RAG results show sources and respect patient/document permissions.
 - [ ] Priority changes ranking only after permission and relevance filters.
