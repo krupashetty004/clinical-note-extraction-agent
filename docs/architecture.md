@@ -77,7 +77,7 @@ flowchart TD
     REVIEW --> JSON
 ```
 
-**Storage note:** Neon is the proposed PostgreSQL provider and supports pgvector. Neon Object Storage is the preferred file-storage candidate only if its current free allowance, private access controls, reliability, and Python/S3 compatibility pass validation. Its official material has described Object Storage as beta, so do not treat availability/terms as settled. If it fails the acceptance checklist, evaluate a free private storage alternative (for example, Supabase Storage Free) without changing the Neon database decision. Reconfirm all free allowances before deployment.
+**Storage note:** Neon is the proposed PostgreSQL provider and supports pgvector. Neon Object Storage is the preferred file-storage choice because the current official documentation marks it generally available, S3-compatible, and included at 5 GB per project on the Free plan. Private access controls and Python/S3 compatibility still require an implementation smoke test. If it fails the acceptance checklist, evaluate Supabase Storage Free as a fallback without changing the Neon database decision. Reconfirm allowances before deployment.
 
 ## 4. Data Sources Must Stay Distinct
 
@@ -174,7 +174,7 @@ A starting ranking can be evaluated as a normalized blend of semantic similarity
 | Version control | Private GitHub | No SOW, real patient notes, credentials, or source uploads committed. |
 
 ### Why Neon instead of Supabase?
-Neon is a PostgreSQL hosting provider, not an alternative database engine. Both Neon and Supabase provide hosted PostgreSQL; the architecture chooses Neon for the database and pgvector. It does not rely on Supabase's application authentication because Django handles login and role permissions. Neon Object Storage is a possible bundled file-storage choice, but because current official materials have described it as beta, its free quota, private access, and integration must be checked. Supabase Storage Free remains a fallback if Neon Object Storage does not meet those conditions. Avoid deploying both storage systems unless there is a demonstrated need.
+Neon is a PostgreSQL hosting provider, not an alternative database engine. Both Neon and Supabase provide hosted PostgreSQL; the architecture chooses Neon for the database and pgvector. It does not rely on Supabase's application authentication because Django handles login and role permissions. Neon Object Storage is the preferred bundled file-storage choice; current official documentation marks it generally available and lists 5 GB per project on the Free plan. Its private access, quota, and integration still need an implementation test. Supabase Storage Free remains a fallback if Neon Object Storage does not meet those conditions. Avoid deploying both storage systems unless there is a demonstrated need.
 
 ### Free-tier constraints
 - Current documented Neon Free limits include 0.5 GB database storage, 100 CU-hours per project, and 5 GB monthly public network transfer. Object Storage terms/allowance must be confirmed in the current console before relying on it.
@@ -185,7 +185,7 @@ Neon is a PostgreSQL hosting provider, not an alternative database engine. Both 
 
 References:
 - Neon plans: https://neon.com/docs/introduction/plans
-- Neon Object Storage: https://neon.com/blog/building-neon-object-storage
+- Neon Object Storage (GA; 5 GB/project on Free): https://neon.com/blog/building-neon-object-storage and https://neon.com/blog/neon-backend-is-ga
 - Neon pgvector: https://neon.com/blog/optimizing-vector-search-performance-with-pgvector
 - Render free services: https://render.com/docs/free
 - Supabase billing: https://supabase.com/docs/guides/platform/billing-on-supabase
