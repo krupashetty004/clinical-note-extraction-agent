@@ -29,7 +29,7 @@
 | PostgreSQL host | Neon Free | Serverless PostgreSQL with scale-to-zero and documented free quota; independent of the app's filesystem | Current official docs/blog checked 16 Oct 2026: up to 100 projects, 100 CU-hours per project/month, 1 GB DB storage/project and 5 GB public network transfer/project/month. Recheck at setup |
 | Vector search | pgvector extension on Neon PostgreSQL | Stores embeddings beside source metadata; avoids a separate vector database service | Enable/test the `vector` extension and benchmark retrieval quality |
 | Keyword search | PostgreSQL full-text search | Supports lexical search alongside semantic similarity in one DB | Establish ranking, filters, and search fallback tests |
-| Object/file storage | Neon Object Storage (S3-compatible) | Stores original text files, images, and audio independently of Render; listed at 5 GB per project in Neon Free plan documentation | Test private bucket behaviour and Python/boto3 upload/download/signing on the actual project. Do not make files public by default |
+| Object/file storage | Neon Object Storage (S3-compatible) | Stores original text files, PDFs, images, and audio independently of Render; listed at 5 GB per project in Neon Free plan documentation | Test private bucket behaviour and Python/boto3 upload/download/signing on the actual project. Do not make files public by default |
 | File storage fallback | Supabase Storage Free, only if Neon storage fails acceptance tests | Known managed private object-storage alternative | Adds a second provider/project. Current documented free allowance is 1 GB; confirm policies and quota before use |
 | Embeddings | Local sentence-transformers model; candidate bge-small-en | Avoids paid embedding endpoint | Measure CPU, memory, cold-start/build time, embedding dimensions, and retrieval relevance on the target host |
 | AI text generation | Configurable provider/model adapter using approved free-tier inference | Allows central model selection from the UI without hardcoding a provider in workflow code | Provider selection/data terms/availability/quotas must be approved; no paid fallback |
@@ -146,7 +146,7 @@ The target is zero out-of-pocket cost for a bounded evaluation demo—not unlimi
 
 ## 9. Implementation-Readiness Checklist
 
-- [ ] Mirai Labs approves expanded scope (hosted app, multiple roles, patient records, image/audio ingestion, managed storage and knowledge-base RAG).
+- [ ] Mirai Labs approves expanded scope (hosted app, multiple roles, patient records, text/PDF/image/audio ingestion, managed storage and knowledge-base RAG).
 - [ ] Render and Neon free plan terms/current usage checked; no payment path or paid fallback configured.
 - [ ] Neon PostgreSQL connection, pgvector extension and Django migrations pass.
 - [ ] Neon Object Storage private upload/download/signing tested from Python/boto3; fallback decided only if necessary.
