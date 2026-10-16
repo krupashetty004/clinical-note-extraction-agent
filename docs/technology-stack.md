@@ -1,182 +1,160 @@
-# Technology Stack Proposal and Justification
+# Technology Stack Proposal — Hosted Doctor Workspace, RAG, and Free-Tier Deployment
 
-**Project:** AI-Powered Clinical Note Extraction and Coding Agent MVP  
-**Status:** Proposed — pending architecture and technology-stack approval  
-**Research checked:** 15 October 2026
+**Revision:** 16 October 2026  
+**Status:** Proposed; expanded scope, providers, hosting, and data handling pending formal Mirai Labs approval.
 
-> All technology choices remain proposals until Mirai Labs approves them. Model availability and free-tier limits can change and must be rechecked before implementation.
+> Zero out-of-pocket spend is a hard design constraint for the evaluation demo. Free-tier usage is quota-limited, may sleep or pause, and is not an unlimited or production-grade availability guarantee. Do not send Mirai Labs data to any external provider before written approval.
 
-## 1. Decision Criteria
+## 1. Selection Criteria
 
-| Criterion | Why It Matters |
-|---|---|
-| Fit to SOW | Must support extraction, verification, ICD-10 retrieval, review, traceability, and evaluation. |
-| Free-tier availability | The SOW disallows paid API keys and GPU-dependent infrastructure. |
-| Privacy and data use | Clinical text must be masked locally and any external provider must be acceptable under Mirai Labs' policy. |
-| Structured output | Extraction results must follow a strict schema and include evidence spans. |
-| Independent verification | The verifier must be a separate pass and must not receive the extractor's hidden reasoning. |
-| Rate limits and latency | Multi-pass calls and bounded retries affect throughput and the under-30-second median target. |
-| Simplicity | The MVP is local and single-reviewer; unnecessary production infrastructure should be avoided. |
+- Fit the doctor workflow: patient/encounter history, clinical-note review, knowledge base, model settings, and permissions.
+- No React frontend.
+- Persistent hosted data beyond app restarts/redeployments.
+- Vector retrieval for editable doctor-managed knowledge and ICD-10 diagnosis candidates.
+- Upload text, images, and audio to the knowledge base, with user review before indexing.
+- Central provider/model selection and connection testing from the UI.
+- Free-tier hosting and API calls only; no silent paid fallback.
+- Small enough to build and test within the approved timeline; every limitation must be explicit.
 
 ## 2. Proposed Stack
 
-| Layer | Proposed technology | Purpose and rationale |
+| Layer | Choice | Why | Free-tier/test risk |
+|---|---|---|---|
+| Frontend | Django templates + HTMX + Bootstrap | Simple doctor-focused web UI without React; forms and partial-page updates without a separate JS SPA. | Test accessibility, browser support, and upload progress. |
+| Web framework/backend | Django / Python | ORM, migrations, templating, admin, built-in authentication, groups, and permission primitives suit patient/encounter CRUD. | Patient-specific access must be implemented and tested; Django defaults alone do not define the intended clinical access model. |
+| Application hosting | Render Free web service | GitHub-linked hosted demo URL. | Sleeps on inactivity; local filesystem is ephemeral; limits and deployment behaviour must be checked. |
+| PostgreSQL hosting | Neon Free | Persistent PostgreSQL with pgvector support; one database can store relational metadata and vector embeddings. | Current plan includes limited database storage, compute-hours and transfer; confirm exact quota before final deployment. |
+| Vector index | PostgreSQL pgvector on Neon | Avoids a separate hosted vector DB; vector and relational filters can be queried together. | Validate extension and index availability, embedding dimensions, query performance, and connection pooling. |
+| Keyword search | PostgreSQL full-text search | Simple lexical matching alongside vector search. | Must be benchmarked against actual ICD/reference descriptions. |
+| Object/file storage | Neon Object Storage candidate, S3-compatible | Potentially keep uploads in the Neon stack and away from ephemeral app disks. | Official information has described it as beta; current free status, private bucket behaviour, quotas, and Python S3 compatibility are a deployment gate. If unsuitable, test Supabase Storage Free as a fallback; do not introduce both without need. |
+| Embeddings | Local sentence-transformers model; candidate bge-small-en | No per-request hosted embedding charge; English semantic search. | CPU and memory on Render; benchmark build time and inference latency. Model files must not be committed to GitHub. |
+| OCR | Tesseract OCR | Open-source OCR without a per-image API fee. | Quality depends on image quality/language; check free-host build dependencies and CPU limits. |
+| Speech-to-text | Local CPU transcription model, or approved free-tier speech API if local testing fails | No paid API requirement. | Large model can be too slow/memory intensive on free web hosting; external API has limits and data-policy conditions. Test early. |
+| Text generation | Central provider/model adapter, allowlisted providers/models | Doctor selects active provider/model in one settings page; extractor and verifier use separate prompts/passes. | Free quotas, structured-output compatibility, model availability, rate limits, and data-use terms. |
+| Authentication | Django auth, groups and permissions | Integrated with the app's user and patient records. | Must implement route-level and object-level checks; no UI-only security. |
+| File uploads | Django upload validation + object-storage adapter | Validate extensions, actual MIME/content, file size, owner, and processing state. | No private files on Render ephemeral disk beyond safe temporary processing; delete temporary copies after processing. |
+| Data schema | Django ORM + Pydantic for AI payload contracts | ORM handles app entities; Pydantic validates model responses. | Pydantic/schema checks do not prove clinical correctness. |
+| Agent orchestration | Explicit Python loop/service modules | Makes tool calls, evidence gates, retry budgets, reconciliation, abstention and escalation reviewable. | Do not add Celery/Redis until needed; they increase hosting complexity. |
+| Traces/audit | Structured audit events in PostgreSQL; safe operational logs | Supports history and change tracking. | Never log API keys, secret URLs, or protected text. Store only safe metadata/masked payloads. |
+| Test stack | pytest, Django TestCase, scripted evaluation | Tests permissions, isolation, ingestion, retrieval, extraction metrics and hosted persistence. | Never use real patient records in public test runs. |
+| Repository | Private GitHub | Version control and daily documented updates. | Never commit SOW, patient notes, credentials, uploads, or embedding files. |
+
+## 3. Why Django Instead of Streamlit, FastAPI-only, or React?
+
+### Selected: Django + HTMX + Bootstrap
+The application is a doctor workspace with user accounts, roles, patient records, encounters, history, knowledge editing, uploads, and central settings. Django provides a single Python web application with an ORM, migrations, authentication primitives, forms, templates, and admin support. HTMX gives interactive search/filter/form actions without a React frontend.
+
+### Alternatives considered
+- **Streamlit:** fastest for a data/AI prototype, but less natural for the expanded account- and encounter-centric product.
+- **FastAPI + Jinja2/HTMX:** strong API framework but requires more application structure to be added for the user/permission/admin workflow. It is not necessary for the initial server-rendered single application.
+- **NiceGUI/Flet:** viable Python UI candidates, but less aligned with Django's existing data/auth ecosystem for this particular workflow.
+- **React:** explicitly excluded by the request.
+
+Django is a proposed choice, not yet implemented. If the scope reverts to the original single-reviewer localhost tool, Streamlit remains a simpler alternative.
+
+## 4. Neon vs Supabase
+
+Neon and Supabase both provide hosted PostgreSQL; they are service providers, not database engines competing with PostgreSQL itself.
+
+**Current proposal: Neon PostgreSQL + pgvector.** Django will handle authentication and authorization, so the application does not require Supabase Auth. Using PostgreSQL vectors means no separate ChromaDB server is needed.
+
+**File storage:** Neon Object Storage is a candidate because it is S3-compatible and can pair files with Neon branches. However, the provider's current documentation has described its service as beta, so test its current free availability, private access, allowed object operations and Python SDK compatibility. If it fails, test Supabase Storage Free as a fallback for private objects. A single provider is preferred unless a second service solves a demonstrated requirement.
+
+The database and uploaded files are different things: PostgreSQL holds metadata and vectors; object storage holds original files. Do not store uploaded binaries in database rows by default.
+
+## 5. RAG, Embeddings, and Priorities
+
+### Ingestion
+1. Doctor submits text or uploads a text file, image, or audio.
+2. Validate size and format; store the original object privately and create metadata.
+3. Extract text from text files, use Tesseract for supported images, and test local/approved speech-to-text for audio.
+4. Display extracted/transcribed text for doctor correction before publishing it.
+5. Split approved text into chunks and retain document ID, version, chunk index, owner/scope, category, tags, source, status, and priority.
+6. Generate vectors using a local sentence-transformers model and store embeddings with chunk metadata in pgvector.
+7. On edit/deactivate, invalidate old chunks/vectors, maintain version history, and handle failed re-indexing visibly.
+
+### Retrieval
+- Query relevant eligible documents using PostgreSQL lexical search and pgvector similarity.
+- Apply access-control, publication-status, document-type and patient-scope filters **before** retrieval is passed to the model.
+- Rank the remaining candidates with a bounded combination of normalized semantic relevance, lexical relevance, and a doctor-configured priority adjustment.
+- Keep a relevance threshold: high priority cannot make irrelevant text acceptable.
+- Deduplicate and return source names/version/chunk references so the UI can show provenance.
+- Use the supplied ICD-10 table as the coding reference. ICD-10 candidate retrieval is logically separate from general knowledge retrieval.
+- Keep patient history and reference knowledge separate and permission-filtered.
+- Require every accepted extraction item to have evidence in the original clinical note; RAG context is not a substitute for note evidence.
+
+Tune weighting and thresholds only on agreed labelled data. Compare semantic-only, lexical-only and combined retrieval.
+
+## 6. Central AI Settings
+
+The UI should have one central **AI Settings** page, not a separate model-control screen for every task.
+
+Required actions:
+- Select an allowlisted provider and model.
+- Enter/update provider credentials securely.
+- Configure only supported generation parameters.
+- Test connection and inspect status, latency, model availability, schema-format compatibility, and error response.
+- Save as draft and activate a tested configuration.
+- See the active configuration ID/version, change time, and test status.
+
+Security:
+- Render API keys masked; never display them after saving.
+- Encrypt any saved key with an application encryption key from Render environment secrets. Do not store cleartext credentials in PostgreSQL or logs.
+- Validate/allowlist endpoints; don't accept arbitrary URLs.
+- Use synthetic text for connectivity tests.
+- Do not activate a configuration that failed the connection/schema checks.
+- A test response does not prove clinical accuracy, provider privacy suitability, or formal project approval.
+- On quota exhaustion, show the user a clear error and preserve the pending work; don't pay, upgrade, or switch providers silently.
+- Keep the selected model configuration global by default. The backend may use separate extraction and verification prompts/passes. A separate verifier model is an optional advanced choice only if explicitly approved.
+
+## 7. Free-Tier Hosting Plan
+
+| Service | Proposed role | Validation before deployment |
 |---|---|---|
-| Core language | Python 3.12.x; exact patch to be pinned after testing | Supports NLP, data processing, APIs, and evaluation. |
-| Schema validation | Pydantic 2.x | Validates required fields and data types. Schema validity alone does not prove clinical correctness. |
-| LLM API | Provisional Groq API candidates, subject to privacy review and approval | Offers current hosted model candidates with documented free-plan quotas. |
-| Agent orchestration | Explicit Python agent loop | Makes tool use, bounded retries, reconciliation, and escalation inspectable. |
-| Keyword retrieval | SQLite FTS5 with BM25 ranking | Uses FTS5 for full-text search over the supplied ICD-10 table and BM25 to rank matching descriptions by relevance. |
-| Semantic retrieval | ChromaDB with a compatible local embedding model, such as bge-small-en | Retrieves potentially related diagnosis descriptions when wording differs. |
-| Local privacy processing | Rule-based masking plus spaCy NER | Detects and masks likely identifiers before model calls. |
-| Reviewer interface | Streamlit | Provides evidence highlighting, accept/reject controls, flagged items, trace viewing, and JSON export locally. |
-| Local persistence | SQLite/local files only where required | Stores review metadata and evaluation outputs without a separate database server. |
-| Trace format | Structured JSON containing masked payloads or safe metadata | Records tool calls, decisions, retries, and outcomes without exposing PHI. |
-| Evaluation | Python scripts and automated tests | Computes metrics and runs required robustness tests. |
-| Version control | Git and private GitHub repository | Tracks documentation and implementation changes. |
+| Render Free | Public Django demo URL | Sleep/cold-start, build/deploy, memory, request timeout, ephemeral disk behaviour, current quota. |
+| Neon Free | PostgreSQL + pgvector | Current project size, compute-hours, egress, pooling and extension support. |
+| Neon Object Storage | Uploaded source documents/images/audio | Free quota, beta/stability status, private buckets, deletion/version semantics, SDK access; fail closed if unresolved. |
+| Supabase Storage Free | Backup option only | Free storage/egress allowance and private object policy if Neon Object Storage fails testing. |
+| Local OCR/embeddings | Tesseract and sentence-transformers | CPU, memory, model download/build time and latency. |
+| LLM / audio API | Approved free-tier provider only | Exact free quotas, request/token/audio duration, input/output retention, model availability and approval. |
 
-Exact package versions must be pinned only after a clean environment test confirms compatibility.
+Free plans can pause, sleep, throttle or exhaust storage/quota. This architecture promises no intentional paid service, not unlimited service or 24/7 availability. It must not automatically upgrade a plan or call a paid provider.
 
-## 3. LLM Candidates and Provisional Recommendation
+## 8. Dependencies and Version Pinning
 
-The SOW's Gemini and Groq model IDs are reference examples. The model IDs below were checked against provider documentation on 15 October 2026.
+Do not claim any version has been tested before it has. Once scope is approved:
+- Select a Python version supported by current Django and provider SDK versions.
+- Pin Django, psycopg, pgvector client integration, HTMX integration, Pydantic, sentence-transformers, OCR dependencies and provider SDKs only after a clean build succeeds.
+- Test installation and deployment on Render's actual free environment.
+- Record model IDs, embedding dimensions, vector schema, storage adapter configuration and provider terms in the deployment checklist.
+- Keep secrets and generated model files out of source control.
 
-| Candidate | Current documented status | Potential use | Important limitation |
-|---|---|---|---|
-| Groq openai/gpt-oss-20b | Listed as a supported model; free-plan limits are documented; strict JSON-schema output is supported | First candidate for structured extraction | Clinical extraction quality must be measured on approved examples. |
-| Groq qwen/qwen3.8-27b | Listed as a supported model; free-plan limits are documented; strict JSON-schema output is supported | Candidate for the independent verification pass | Clinical verification quality must be measured; do not assume it is better simply because it is a different model family. |
-| Google gemini-3.1-flash-lite | Listed as available with a free tier | Alternative to evaluate if policy permits | Google's pricing documentation states that free-tier content may be used to improve its products, requiring careful privacy review for clinical text. |
+## 9. Implementation Readiness Gate
 
-Official references:
-- Groq [supported models](https://console.groq.com/docs/models)
-- Groq [free-plan rate limits](https://console.groq.com/docs/rate-limits)
-- Groq [structured outputs](https://console.groq.com/docs/structured-outputs)
-- Groq [data retention and controls](https://console.groq.com/docs/your-data)
-- Groq [model deprecation](https://console.groq.com/docs/deprecations)
-- Google [Gemini models](https://ai.google.dev/gemini-api/docs/models)
-- Google [Gemini API pricing and data-use terms](https://ai.google.dev/gemini-api/docs/pricing)
+- [ ] Mirai Labs approves expanded scope: hosting, accounts/roles, patient/encounter history, knowledge base, OCR/audio and model settings.
+- [ ] Public demo will use synthetic data unless a specific data arrangement is approved.
+- [ ] Neon PostgreSQL + pgvector works with Django migrations.
+- [ ] Neon Object Storage private access and free allowance are proven; otherwise approve/test a fallback.
+- [ ] Render Free deployment, cold start and persistent service connections are tested.
+- [ ] API providers and exact model IDs pass data-term/quota checks.
+- [ ] Authentication, patient-object access, and file permissions tests pass.
+- [ ] Extraction/verification schema and masked-to-original offset mapping are finalized.
+- [ ] Required SOW gold-standard/challenge tests remain feasible.
+- [ ] A written plan addresses the expanded timeline; no required dataset/test is silently reduced.
 
-### Provisional configuration to evaluate
+## 10. Official References
 
-1. **Extraction:** Groq openai/gpt-oss-20b.
-2. **Independent verification:** Groq qwen/qwen3.8-27b.
+- Django: https://docs.djangoproject.com/
+- HTMX: https://htmx.org/docs/
+- Bootstrap: https://getbootstrap.com/docs/
+- Neon plans: https://neon.com/docs/introduction/plans
+- Neon Object Storage: https://neon.com/blog/building-neon-object-storage
+- Neon Django connection guide: https://neon.com/blog/python-django-and-neons-serverless-postgres
+- pgvector on Neon: https://neon.com/blog/optimizing-vector-search-performance-with-pgvector
+- Render Free: https://render.com/docs/free
+- Supabase Free terms/storage (fallback): https://supabase.com/docs/guides/platform/billing-on-supabase and https://supabase.com/docs/guides/storage/buckets/fundamentals
+- Tesseract OCR: https://github.com/tesseract-ocr/tesseract
+- Sentence Transformers: https://www.sbert.net/
+- Groq: https://console.groq.com/docs/models and https://console.groq.com/docs/rate-limits
 
-This pair is a starting point for a small, controlled evaluation because both are documented as supporting strict JSON-schema output and come from different model families. It is not a final decision or a claim of proven clinical quality.
-
-The previously suggested Groq model llama-3.3-70b-versatile should not be used as the default candidate: Groq's deprecation documentation lists its shutdown date as 16 August 2026. Check provider documentation again before finalizing model IDs.
-
-### Privacy requirement
-
-Groq states that inference inputs and outputs are not retained by default, but data may be temporarily retained for reliability troubleshooting or abuse monitoring unless applicable data controls prevent it. This is not a substitute for Mirai Labs' approval or a data-use review.
-
-Google's free-tier documentation states that content may be used to improve its products. Do not send clinical notes to any provider until Mirai Labs confirms that the provider's applicable terms and configuration are acceptable. Local PHI masking is mandatory regardless, but masking alone does not guarantee that every identifier will be removed.
-
-### Free-tier capacity risk
-
-Groq's current rate-limit documentation lists free-plan limits for openai/gpt-oss-20b and qwen/qwen3.8-27b of 1,000 requests per day, with model-specific token limits. Account-specific limits must be checked before implementation.
-
-A two-pass design can require at least two model requests per note. At two calls per note, 1,000 requests would theoretically cover at most 500 notes per day before retries, failures, or additional model calls. Processing all approximately 5,000 notes may therefore exceed the available daily request budget. Confirm the required processing volume and quota before finalizing capacity; do not silently reduce the stated scope.
-
-## 4. Technology Justifications
-
-### 4.1 Python
-
-Python is proposed because it supports data manipulation, text processing, API clients, NLP libraries, and repeatable evaluation in one environment. Node.js is possible, but Python is a direct fit for the project's NLP and evaluation tasks.
-
-### 4.2 Pydantic
-
-Pydantic validates the structure of extraction and verification results. It catches missing fields, incorrect types, and schema errors. Evidence existence, original offsets, clinical support, and status correctness require additional validation logic.
-
-### 4.3 Explicit agent loop
-
-A small Python loop is preferred over a large orchestration framework because the SOW requires deliberate tool calls, bounded retries, reconciliation, and escalation. Keeping those decisions explicit makes the process easier to test and explain.
-
-### 4.4 Keyword and semantic ICD-10 retrieval
-
-Keyword retrieval is transparent and can find exact terms. Semantic retrieval may find relevant descriptions when the note uses different wording. The two approaches are complementary, but their combined value must be measured against a keyword-only comparison.
-
-SQLite FTS5 provides full-text retrieval and its BM25 ranking function orders matches by relevance. Evaluate this lexical retrieval against a simpler keyword-only baseline, then measure whether semantic retrieval adds value. ChromaDB is a candidate vector store for embeddings. Similarity scores must not be treated as proof that a code is clinically correct.
-
-### 4.5 Local privacy processing
-
-Rule-based matching can detect predictable patterns such as phone numbers and email addresses. spaCy NER may identify names, dates, and locations based on context. Neither is guaranteed to detect every identifier. Masking must be tested, and an explicit mapping between masked text and original offsets must be preserved so evidence can be validated against the original note.
-
-### 4.6 Streamlit
-
-Streamlit offers a fast path to a local review interface. React and a separate backend would add frontend work that is not needed for a single-reviewer localhost MVP.
-
-### 4.7 SQLite and local files
-
-SQLite and local files avoid the operational overhead of running a database server. Store only data needed for the local review and evaluation workflow. Keep raw protected information out of traces and repository commits.
-
-### 4.8 Structured JSON trace
-
-Structured JSON makes model/tool calls, retries, decisions, and verification outcomes easy to inspect and use during debugging. Store masked payloads or safe metadata only, and test that trace outputs do not contain protected information.
-
-### 4.9 Evaluation scripts
-
-Automated scripts provide repeatable entity metrics, span checks, ICD-10 measures, abstention analysis, adversarial tests, and latency/call counts. A demo alone cannot establish that the SOW acceptance thresholds have been achieved.
-
-## 5. Alternatives and Scope Decisions
-
-| Decision | Proposed choice | Alternative | Reason |
-|---|---|---|---|
-| Core language | Python | Node.js | Direct fit for NLP and evaluation tooling |
-| Schema | Pydantic | Manual JSON validation | Reusable typed validation |
-| Orchestration | Explicit Python loop | Heavy agent framework | Easier to inspect and control |
-| Lexical retrieval | SQLite FTS5 with BM25 ranking | Exact substring matching only | Full-text retrieval with relevance ranking |
-| Retrieval approach | Keyword + semantic, subject to evaluation | Keyword-only | Potentially broader candidate retrieval |
-| UI | Streamlit | React frontend | Faster local MVP development |
-| Persistence | SQLite/local files | PostgreSQL service | No separate database server required |
-| Deployment | Localhost | Cloud and multi-user deployment | Cloud deployment is excluded from current scope |
-
-The MVP excludes OCR, scanned/handwritten note processing, procedure-code assignment, EHR or billing integration, cloud deployment, multi-user support, model fine-tuning, paid APIs, and GPU-dependent infrastructure. These follow the SOW scope boundaries.
-
-## 6. Version and Compatibility Policy
-
-The SOW does not prescribe exact package versions. Python 3.12.x and Pydantic 2.x are proposed starting points, not confirmed tested combinations. Pin exact versions after checking:
-
-- Python/library compatibility.
-- API SDK compatibility with the selected provider.
-- ChromaDB and embedding-model compatibility.
-- CPU and memory requirements.
-- Reproducible dependency installation.
-
-Do not label versions as tested unless they have actually been tested in the target environment.
-
-## 7. Implementation Readiness Checklist
-
-- [ ] Architecture and technology stack approved by Mirai Labs.
-- [ ] Exact model IDs rechecked and accessible.
-- [ ] Current free-tier quotas and rate limits recorded.
-- [ ] Provider data-use terms reviewed and approved for this project.
-- [ ] Extraction and verification schemas defined.
-- [ ] Original-to-masked text offset mapping specified and tested.
-- [ ] Keyword retrieval approach and embedding model selected.
-- [ ] Trace outputs checked for protected information.
-- [ ] Dependency versions tested and pinned.
-- [ ] Gold-standard and evaluation procedures ready.
-
-## 8. Final Recommendation
-
-Begin evaluation with Groq openai/gpt-oss-20b for extraction and qwen/qwen3.8-27b for verification, provided Mirai Labs approves the applicable data-handling terms. Use Pydantic, an explicit Python agent loop, keyword and semantic ICD-10 candidate retrieval, local PHI masking, Streamlit, privacy-safe JSON tracing, and a repeatable evaluation harness.
-
-Keep the model pair provisional until privacy approval, account-specific quota checks, and evaluation demonstrate that the configuration meets project requirements. Recheck model availability before implementation because provider model catalogues and free-plan limits can change.
-
-## References
-
-1. Mirai Labs, *Statement of Work: AI-Powered Clinical Note Extraction and Coding Agent MVP*, version 1.0, 13 October 2026.
-2. Groq, [Supported Models](https://console.groq.com/docs/models).
-3. Groq, [Rate Limits](https://console.groq.com/docs/rate-limits).
-4. Groq, [Structured Outputs](https://console.groq.com/docs/structured-outputs).
-5. Groq, [Your Data in GroqCloud](https://console.groq.com/docs/your-data).
-6. Groq, [Model Deprecation](https://console.groq.com/docs/deprecations).
-7. Google, [Gemini API Models](https://ai.google.dev/gemini-api/docs/models).
-8. Google, [Gemini API Pricing and Data-Use Terms](https://ai.google.dev/gemini-api/docs/pricing).
-9. Pydantic, [Official Documentation](https://docs.pydantic.dev/).
-10. Streamlit, [Official Documentation](https://docs.streamlit.io/).
-11. Chroma, [Official Documentation](https://docs.trychroma.com/).
-12. spaCy, [Official Documentation](https://spacy.io/usage).
-13. Python, [Official Documentation](https://docs.python.org/).
-
-*Provider details were checked on 15 October 2026. Recheck them before implementation; documentation of availability is not project approval.*
+*Recheck availability, terms, and quotas when implementing. Provider documentation is not approval to send project data.*
