@@ -1,0 +1,176 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}
+    {{ patient.identifier }} | Mirai Clinical
+{% endblock %}
+
+{% block breadcrumb_label %}Patient record{% endblock %}
+
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">PATIENT RECORD</p>
+        <h1>{{ patient.display_name }}</h1>
+        <p class="page-description">
+            Patient ID: <strong>{{ patient.identifier }}</strong>
+        </p>
+    </div>
+
+    <a
+        class="btn btn-outline-secondary btn-sm"
+        href="{% url 'dashboard:patients' %}"
+    >
+        Back to patients
+    </a>
+</section>
+
+<section class="patient-overview-grid">
+    <article class="summary-card">
+        <span class="summary-label">Patient ID</span>
+        <p class="overview-value">{{ patient.identifier }}</p>
+        <p class="summary-support">Internal demo identifier</p>
+    </article>
+
+    <article class="summary-card">
+        <span class="summary-label">Current encounters</span>
+        <p class="overview-value">{{ current_encounters|length }}</p>
+        <p class="summary-support">Open encounters</p>
+    </article>
+
+    <article class="summary-card">
+        <span class="summary-label">Previous encounters</span>
+        <p class="overview-value">{{ previous_encounters|length }}</p>
+        <p class="summary-support">
+            Completed or cancelled encounters
+        </p>
+    </article>
+</section>
+
+<section class="content-section">
+    <div class="section-heading">
+        <div>
+            <p class="eyebrow">CURRENT CARE</p>
+            <h2>Current encounters</h2>
+        </div>
+    </div>
+
+    {% for encounter in current_encounters %}
+        <article class="panel encounter-card">
+            <div class="encounter-heading">
+                <div>
+                    <h3>{{ encounter.title }}</h3>
+                    <p class="section-description">
+                        {{ encounter.encounter_date|date:"d M Y, H:i" }}
+                    </p>
+                </div>
+
+                <div class="encounter-actions">
+                    <span class="status-pill status-progress">
+                        {{ encounter.get_status_display }}
+                    </span>
+
+                    <a
+                        class="btn btn-outline-secondary btn-sm"
+                        href="{% url 'dashboard:clinical_note_create' encounter_id=encounter.pk %}"
+                    >
+                        Add note version
+                    </a>
+                </div>
+            </div>
+
+            {% for note in encounter.notes.all %}
+                <div class="clinical-note-preview">
+                    <div class="note-version-heading">
+                        <strong>Clinical note</strong>
+                        <span>
+                            Version {{ note.version_number }}
+                        </span>
+                    </div>
+
+                    <p class="note-source">
+                        {{ note.get_source_display }} ·
+                        {{ note.created_at|date:"d M Y, H:i" }}
+                    </p>
+
+                    <div class="original-note-text">{{ note.original_text }}</div>
+                </div>
+            {% empty %}
+                <p class="empty-note">
+                    No clinical notes have been added to this encounter.
+                </p>
+            {% endfor %}
+        </article>
+    {% empty %}
+        <div class="panel empty-state">
+            <h2>No current encounters</h2>
+            <p>This patient has no open encounters recorded.</p>
+        </div>
+    {% endfor %}
+</section>
+
+<section class="content-section">
+    <div class="section-heading">
+        <div>
+            <p class="eyebrow">RECORD HISTORY</p>
+            <h2>Previous encounters</h2>
+            <p class="section-description">
+                Historical notes remain associated with their original
+                encounters and versions.
+            </p>
+        </div>
+    </div>
+
+    {% for encounter in previous_encounters %}
+        <article class="panel encounter-card">
+            <div class="encounter-heading">
+                <div>
+                    <h3>{{ encounter.title }}</h3>
+                    <p class="section-description">
+                        {{ encounter.encounter_date|date:"d M Y, H:i" }}
+                    </p>
+                </div>
+
+                <div class="encounter-actions">
+                    <span class="status-pill status-complete">
+                        {{ encounter.get_status_display }}
+                    </span>
+
+                    <a
+                        class="btn btn-outline-secondary btn-sm"
+                        href="{% url 'dashboard:clinical_note_create' encounter_id=encounter.pk %}"
+                    >
+                        Add note version
+                    </a>
+                </div>
+            </div>
+
+            {% for note in encounter.notes.all %}
+                <div class="clinical-note-preview">
+                    <div class="note-version-heading">
+                        <strong>Historical clinical note</strong>
+                        <span>
+                            Version {{ note.version_number }}
+                        </span>
+                    </div>
+
+                    <p class="note-source">
+                        {{ note.get_source_display }} ·
+                        {{ note.created_at|date:"d M Y, H:i" }}
+                    </p>
+
+                    <div class="original-note-text">{{ note.original_text }}</div>
+                </div>
+            {% empty %}
+                <p class="empty-note">
+                    No clinical notes were recorded for this encounter.
+                </p>
+            {% endfor %}
+        </article>
+    {% empty %}
+        <div class="panel empty-state">
+            <h2>No previous encounters</h2>
+            <p>Completed or cancelled encounters will appear here.</p>
+        </div>
+    {% endfor %}
+</section>
+{% endblock %}

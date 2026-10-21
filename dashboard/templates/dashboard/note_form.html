@@ -1,0 +1,85 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}Add clinical note | Mirai Clinical{% endblock %}
+{% block breadcrumb_label %}Add clinical note{% endblock %}
+
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">CLINICAL NOTE</p>
+        <h1>Add clinical note</h1>
+        <p class="page-description">
+            Patient {{ patient.identifier }} —
+            {{ patient.display_name }}
+        </p>
+    </div>
+</section>
+
+<section class="panel note-entry-panel">
+    <div class="note-entry-heading">
+        <div>
+            <h2>{{ encounter.title }}</h2>
+            <p class="section-description">
+                Encounter date:
+                {{ encounter.encounter_date|date:"d M Y, H:i" }}
+            </p>
+        </div>
+
+        <span class="count-pill">
+            New version: {{ next_version }}
+        </span>
+    </div>
+
+    <div class="note-integrity-notice">
+        **Version history is preserved.**
+
+        Saving creates a new note version. It does not replace a previous
+        version. Use synthetic text during development.
+    </div>
+
+    <form method="post" class="note-entry-form">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">
+                {{ form.non_field_errors }}
+            </div>
+        {% endif %}
+
+        <div class="mb-3">
+            <label
+                class="form-label"
+                for="{{ form.original_text.id_for_label }}"
+            >
+                Original note text
+            </label>
+
+            {{ form.original_text }}
+
+            {% for error in form.original_text.errors %}
+                <div class="text-danger mt-2 small">
+                    {{ error }}
+                </div>
+            {% endfor %}
+
+            <p class="note-field-help">
+                The submitted text is preserved as the original source
+                for future extraction and evidence-offset validation.
+            </p>
+        </div>
+
+        <div class="note-form-actions">
+            <button class="btn btn-primary" type="submit">
+                Save new note version
+            </button>
+
+            <a
+                class="btn btn-outline-secondary"
+                href="{% url 'dashboard:patient_detail' patient_id=patient.pk %}"
+            >
+                Cancel
+            </a>
+        </div>
+    </form>
+</section>
+{% endblock %}
