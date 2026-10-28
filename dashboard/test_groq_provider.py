@@ -144,6 +144,35 @@ class GroqProviderTests(SimpleTestCase):
         user_message = client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
         self.assertIn('"coding_candidates"', user_message)
         self.assertIn('"original_note"', user_message)
+        self.assertEqual(
+            client.chat.completions.create.call_args.kwargs["response_format"],
+            {"type": "json_object"},
+        )
+
+    def test_gpt_oss_verification_uses_strict_json_schema(self):
+        client = fake_client(json.dumps(EMPTY_VERIFICATION))
+        provider = GroqVerificationProvider(
+            client=client,
+            model="openai/gpt-oss-20b",
+        )
+        extraction = ExtractionResult.model_validate(EMPTY_EXTRACTION)
+
+        result = provider.verify(
+            "Synthetic note only.",
+            extraction,
+            DiagnosisCodingBatch(diagnoses=()),
+        )
+
+        self.assertEqual(result, EMPTY_VERIFICATION)
+        response_format = client.chat.completions.create.call_args.kwargs["response_format"]
+        self.assertEqual(response_format["type"], "json_schema")
+        self.assertTrue(response_format["json_schema"]["strict"])
+        schema = response_format["json_schema"]["schema"]
+        self.assertFalse(schema["additionalProperties"])
+        self.assertEqual(
+            set(schema["required"]),
+            {"item_checks", "potential_omissions", "needs_review", "review_reasons"},
+        )
 
     def test_invalid_json_is_rejected_without_echoing_provider_content(self):
         secret_marker = "SYNTHETIC_PRIVATE_RESPONSE_MARKER"
