@@ -174,6 +174,62 @@ class GroqProviderTests(SimpleTestCase):
             {"item_checks", "potential_omissions", "needs_review", "review_reasons"},
         )
 
+    def test_verification_resolves_unique_offsets_and_requires_review_for_unresolved_items(self):
+        note = "Synthetic assessment: diabetes."
+        evidence = "diabetes"
+        start = note.index(evidence)
+        extraction = ExtractionResult.model_validate(
+            {
+                "items": [
+                    {
+                        "category": "diagnosis",
+                        "entity": "diabetes",
+                        "status": "active",
+                        "evidence_text": evidence,
+                        "start_offset": start,
+                        "end_offset": start + len(evidence),
+                        "attributes": {},
+                    }
+                ],
+                "needs_review": False,
+                "review_reasons": [],
+            }
+        )
+        payload = {
+            "item_checks": [
+                {
+                    "item_index": 0,
+                    "outcome": "unsupported",
+                    "status_check": "correct",
+                    "reason": "Synthetic verifier result requires review.",
+                    "evidence": [
+                        {
+                            "evidence_text": evidence,
+                            "start_offset": 0,
+                            "end_offset": 1,
+                        }
+                    ],
+                }
+            ],
+            "potential_omissions": [],
+            "needs_review": False,
+            "review_reasons": [],
+        }
+        client = fake_client(json.dumps(payload))
+        provider = GroqVerificationProvider(client=client, model="unit-test-model")
+
+        result = provider.verify(
+            note,
+            extraction,
+            DiagnosisCodingBatch(diagnoses=()),
+        )
+
+        reference = result["item_checks"][0]["evidence"][0]
+        self.assertEqual(reference["start_offset"], start)
+        self.assertEqual(reference["end_offset"], start + len(evidence))
+        self.assertTrue(result["needs_review"])
+        self.assertTrue(result["review_reasons"])
+
     def test_invalid_json_is_rejected_without_echoing_provider_content(self):
         secret_marker = "SYNTHETIC_PRIVATE_RESPONSE_MARKER"
         provider = GroqExtractionProvider(client=fake_client(secret_marker))
