@@ -41,16 +41,28 @@ from dashboard.extraction.verification import (
 logger = logging.getLogger(__name__)
 
 
-_SAFE_VERIFICATION_FAILURE_CODES = {
+_SAFE_VERIFICATION_FAILURE_CODES = frozenset({
     "provider_timeout",
     "provider_failed",
+    "provider_bad_request",
+    "provider_authentication_failed",
+    "provider_permission_denied",
+    "provider_resource_not_found",
+    "provider_request_too_large",
+    "provider_rate_limited",
+    "provider_server_error",
+    "provider_connection_error",
+    "provider_response_shape_invalid",
+    "provider_empty_response",
+    "provider_invalid_json",
+    "provider_invalid_json_shape",
     "verification_timeout",
     "verification_failed",
-}
+})
 
 
 def _safe_verification_failure_code(error: Exception) -> str:
-    """Map provider-controlled exception metadata to stable public codes."""
+    """Return only allowlisted provider failure categories."""
     code = getattr(error, "code", "verification_failed")
     if code == "provider_timeout":
         return "verification_timeout"
