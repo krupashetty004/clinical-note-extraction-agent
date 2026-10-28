@@ -65,6 +65,10 @@ class ProviderCodedError(RuntimeError):
     code = "provider-error-with-sensitive-details"
 
 
+class SyntheticRateLimitError(RuntimeError):
+    code = "provider_rate_limited"
+
+
 class AgentWorkflowTests(SimpleTestCase):
     def setUp(self):
         self.note = "Synthetic note for orchestration testing."
@@ -200,6 +204,28 @@ class AgentWorkflowTests(SimpleTestCase):
         )
 
         self.assertEqual(result.failure_code, "verification_failed")
+
+    def test_safe_provider_failure_category_is_preserved(self):
+        extraction_provider = SyntheticExtractionProvider(
+            [valid_empty_extraction()]
+        )
+        verification_provider = SyntheticVerificationProvider(
+            [
+                SyntheticRateLimitError("synthetic private rate-limit details"),
+                SyntheticRateLimitError("synthetic private rate-limit details"),
+            ]
+        )
+
+        result = run_agent_workflow(
+            extraction_provider,
+            verification_provider,
+            self.note,
+            max_verification_attempts=2,
+        )
+
+        self.assertEqual(result.status, "needs_review")
+        self.assertEqual(result.failure_code, "provider_rate_limited")
+        self.assertNotIn("synthetic private rate-limit details", str(result))
 
     def test_malformed_verification_is_retried_and_keeps_safe_code(self):
         extraction_provider = SyntheticExtractionProvider(
