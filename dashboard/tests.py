@@ -446,8 +446,8 @@ class PatientInterfaceTests(TestCase):
 
         self.assertEqual(summary_cards[0]["value"], "1")
         self.assertEqual(summary_cards[1]["value"], "1")
-        self.assertEqual(summary_cards[2]["value"], "—")
-        self.assertEqual(summary_cards[3]["value"], "—")
+        self.assertEqual(summary_cards[2]["value"], "0")
+        self.assertEqual(summary_cards[3]["value"], "0")
         self.assertEqual(response.context["review_queue"], [])
 
     def test_administrator_group_without_assignment_sees_no_patients(self):

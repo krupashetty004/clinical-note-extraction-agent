@@ -20,6 +20,27 @@ _DEFAULT_MINIMUM_LEXICAL_SCORE = 0.6
 _DEFAULT_MINIMUM_SEMANTIC_SCORE = 0.83
 _DEFAULT_LEXICAL_WEIGHT = 0.65
 
+# This is a retrieval synonym, not a clinical assertion. Keep it phrase
+# scoped so "low blood pressure" continues to match the low-reading code.
+_LEXICAL_PHRASE_SYNONYMS = (
+    (re.compile(r"\bhigh\s+blood\s+pressure\b"), "elevated blood pressure"),
+    (re.compile(r"\bhigh\s+bp\b"), "elevated blood pressure"),
+    (re.compile(r"\bhtn\b"), "hypertension"),
+    (
+        re.compile(r"\bdiabetes\s+mellitus\s+type\s+2\b"),
+        "type 2 diabetes mellitus",
+    ),
+)
+_NEGATED_QUERY_PATTERN = re.compile(
+    r"^\s*(?:no|not|without|denies|denied|negative for)\b|"
+    r"\bruled\s+out\s*$",
+    re.IGNORECASE,
+)
+_UNCERTAIN_QUERY_PATTERN = re.compile(
+    r"^\s*(?:possible|possibly|suspected|likely|may have|might have|"
+    r"question of|concern for)\b",
+    re.IGNORECASE,
+)
 
 @dataclass(frozen=True, slots=True)
 class ICD10Candidate:
@@ -45,8 +66,10 @@ class ICD10LookupResult:
 def _tokenize_diagnosis(text: str) -> tuple[str, ...]:
     """Normalize words while preserving their order and frequency."""
     normalized = unicodedata.normalize("NFKC", text).lower()
+    for pattern, replacement in _LEXICAL_PHRASE_SYNONYMS:
+        normalized = pattern.sub(replacement, normalized)
 
-    raw_tokens = re.findall(r"[a-z0-9]+", normalized)
+    raw_tokens = re.findall(r"[^\W_]+", normalized, flags=re.UNICODE)
     filtered = [
         token
         for token in raw_tokens
@@ -96,6 +119,25 @@ def _score_description(
 
     score = 0.7 * coverage + 0.3 * order_similarity
     return round(score, 4)
+
+
+def _is_exact_description_match(
+    query_tokens: tuple[str, ...],
+    description: str,
+) -> bool:
+    return query_tokens == _tokenize_diagnosis(description)
+
+
+def _specificity_tiebreak(
+    query_tokens: tuple[str, ...],
+    description: str,
+) -> tuple[int, int]:
+    """Prefer exact descriptions, then descriptions with fewer extra terms."""
+    description_tokens = _tokenize_diagnosis(description)
+    return (
+        int(_is_exact_description_match(query_tokens, description)),
+        -max(0, len(description_tokens) - len(query_tokens)),
+    )
 
 
 def search_icd10(
@@ -149,6 +191,25 @@ def search_icd10(
             reason="The query contains no searchable diagnosis terms.",
         )
 
+    if _NEGATED_QUERY_PATTERN.search(cleaned_query):
+        return ICD10LookupResult(
+            query=cleaned_query,
+            status="no_confident_match",
+            candidates=(),
+            reason="Negated diagnosis terms are not eligible for confident coding.",
+        )
+
+    if _UNCERTAIN_QUERY_PATTERN.search(cleaned_query):
+        return ICD10LookupResult(
+            query=cleaned_query,
+            status="no_confident_match",
+            candidates=(),
+            reason=(
+                "Uncertain diagnosis terms require review before confident "
+                "coding."
+            ),
+        )
+
     # Narrow the database results before scoring descriptions.
     matching_descriptions = Q()
 
@@ -176,6 +237,13 @@ def search_icd10(
     ranked.sort(
         key=lambda candidate: (
             -candidate.lexical_score,
+            tuple(
+                -value
+                for value in _specificity_tiebreak(
+                    query_tokens,
+                    candidate.description,
+                )
+            ),
             candidate.code,
         )
     )
@@ -267,14 +335,41 @@ def search_hybrid_icd10(
 
     # Import lazily so lexical-only callers do not need the embedding
     # model loaded or the semantic index built.
+    # Import lazily so lexical-only callers do not need the embedding
+    # model loaded or the semantic index built.
     from dashboard.extraction.icd10_semantic import (
+        SemanticIndexConfigurationError,
+        SemanticIndexNotReadyError,
         search_semantic_icd10,
     )
 
-    semantic_candidates = search_semantic_icd10(
-        lexical_result.query,
-        limit=_MAX_RESULTS,
-    )
+    try:
+        semantic_candidates = search_semantic_icd10(
+            lexical_result.query,
+            limit=_MAX_RESULTS,
+        )
+    except (
+        SemanticIndexConfigurationError,
+        SemanticIndexNotReadyError,
+    ):
+        # Preserve lexical results, but clearly disclose that semantic
+        # retrieval was unavailable. Do not hide unrelated exceptions.
+        fallback_reason = (
+            "Semantic retrieval is unavailable; returning lexical-only "
+            "candidates for review."
+        )
+
+        if lexical_result.reason:
+            fallback_reason = (
+                f"{lexical_result.reason} {fallback_reason}"
+            )
+
+        return ICD10LookupResult(
+            query=lexical_result.query,
+            status=lexical_result.status,
+            candidates=tuple(lexical_result.candidates[:limit]),
+            reason=fallback_reason,
+        )
 
     lexical_by_code = {
         candidate.code: candidate

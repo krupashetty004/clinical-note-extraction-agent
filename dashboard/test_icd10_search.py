@@ -51,6 +51,21 @@ class ICD10SearchTests(TestCase):
                     code="TST008",
                     description="Post COVID-19 condition, unspecified",
                 ),
+                ICDCode(
+                    code="I10",
+                    description="Essential (primary) hypertension",
+                ),
+                ICDCode(
+                    code="R030",
+                    description=(
+                        "Elevated blood-pressure reading, without diagnosis "
+                        "of hypertension"
+                    ),
+                ),
+                ICDCode(
+                    code="R031",
+                    description="Nonspecific low blood-pressure reading",
+                ),
             ]
         )
 
@@ -144,3 +159,72 @@ class ICD10SearchTests(TestCase):
     def test_rejects_non_string_query(self):
         with self.assertRaises(TypeError):
             search_icd10(None)
+
+    def test_high_blood_pressure_reading_prefers_elevated_reading(self):
+        result = search_icd10("high blood pressure reading", limit=5)
+
+        self.assertEqual(result.candidates[0].code, "R030")
+        self.assertGreater(
+            result.candidates[0].lexical_score,
+            next(
+                candidate.lexical_score
+                for candidate in result.candidates
+                if candidate.code == "R031"
+            ),
+        )
+        self.assertNotEqual(result.candidates[0].code, "I10")
+
+    def test_low_blood_pressure_reading_prefers_low_reading(self):
+        result = search_icd10("low blood pressure reading", limit=5)
+
+        self.assertEqual(result.candidates[0].code, "R031")
+
+    def test_blood_pressure_regressions_preserve_existing_top_candidates(self):
+        self.assertEqual(
+            search_icd10("essential hypertension", limit=5).candidates[0].code,
+            "I10",
+        )
+        self.assertEqual(
+            search_icd10(
+                "elevated blood pressure reading",
+                limit=5,
+            ).candidates[0].code,
+            "R030",
+        )
+
+    def test_prefers_exact_specific_description_over_unspecified_variant(self):
+        result = search_icd10(
+            "Type 2 diabetes mellitus without complications",
+            limit=5,
+        )
+
+        self.assertEqual(result.candidates[0].code, "TST001")
+        self.assertGreater(
+            result.candidates[0].lexical_score,
+            next(
+                candidate.lexical_score
+                for candidate in result.candidates
+                if candidate.code == "TST002"
+            ),
+        )
+
+    def test_supports_common_non_diagnostic_synonyms(self):
+        self.assertEqual(
+            search_icd10("HTN").candidates[0].code,
+            "I10",
+        )
+        self.assertEqual(
+            search_icd10("high BP reading").candidates[0].code,
+            "R030",
+        )
+
+    def test_abstains_for_negated_or_uncertain_queries(self):
+        for query in (
+            "no diabetes",
+            "possible diabetes",
+        ):
+            with self.subTest(query=query):
+                result = search_icd10(query)
+                self.assertEqual(result.status, "no_confident_match")
+                self.assertEqual(result.candidates, ())
+                self.assertIsNotNone(result.reason)

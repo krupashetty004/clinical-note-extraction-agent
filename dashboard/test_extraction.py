@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from dashboard.extraction.schema import (
     ExtractionResult,
     ExtractedItem,
+    validate_item_status_context,
     validate_evidence_spans,
 )
 
@@ -194,6 +195,147 @@ class ExtractionSchemaTests(SimpleTestCase):
 
         validate_evidence_spans(result, "No supported mentions.")
         self.assertEqual(result.items, [])
+
+    def test_validates_all_sow_entity_categories_against_evidence(self):
+        note = (
+            "Assessment: diabetes. "
+            "Medication: metformin. "
+            "Plan: appendectomy. "
+            "Allergy: penicillin allergy. "
+            "Vitals: temperature 38 C."
+        )
+        values = [
+            ("diagnosis", "diabetes", "active", "diabetes"),
+            ("medication", "metformin", "current", "metformin"),
+            ("procedure", "appendectomy", None, "appendectomy"),
+            ("allergy", "penicillin allergy", None, "penicillin allergy"),
+            ("vital_sign", "temperature", None, "temperature 38 C"),
+        ]
+        items = []
+        for category, entity, status, evidence in values:
+            start = note.index(evidence)
+            items.append(
+                {
+                    "category": category,
+                    "entity": entity,
+                    "status": status,
+                    "evidence_text": evidence,
+                    "start_offset": start,
+                    "end_offset": start + len(evidence),
+                    "attributes": {},
+                }
+            )
+
+        result = ExtractionResult.model_validate(
+            {
+                "items": items,
+                "needs_review": False,
+                "review_reasons": [],
+            }
+        )
+
+        validate_evidence_spans(result, note)
+
+    def test_rejects_fabricated_entity_with_valid_source_span(self):
+        note = "Assessment: diabetes."
+        item = self.make_item(
+            note,
+            "diabetes",
+            entity="heart failure",
+        )
+
+        with self.assertRaisesRegex(ValueError, "does not contain"):
+            validate_evidence_spans(self.make_result(item), note)
+
+    def test_requires_all_entity_tokens_in_evidence(self):
+        note = "Assessment: diabetes."
+        item = self.make_item(
+            note,
+            "diabetes",
+            entity="type 2 diabetes",
+        )
+
+        with self.assertRaisesRegex(ValueError, "does not contain"):
+            validate_evidence_spans(self.make_result(item), note)
+
+    def test_uses_unicode_code_point_offsets_and_entity_tokens(self):
+        note = "😀 Assessment: café-au-lait macule."
+        evidence = "café-au-lait macule"
+        start = note.index(evidence)
+        item = ExtractedItem(
+            category="diagnosis",
+            entity="café-au-lait macule",
+            status="active",
+            evidence_text=evidence,
+            start_offset=start,
+            end_offset=start + len(evidence),
+        )
+
+        validate_evidence_spans(self.make_result(item), note)
+        self.assertEqual(
+            note[item.start_offset:item.end_offset],
+            evidence,
+        )
+
+    def test_rejects_fabricated_attribute_not_in_evidence(self):
+        note = "Medication: metformin."
+        start = note.index("metformin")
+        item = ExtractedItem(
+            category="medication",
+            entity="metformin",
+            status="current",
+            evidence_text="metformin",
+            start_offset=start,
+            end_offset=start + len("metformin"),
+            attributes={"dose": "500 mg"},
+        )
+
+        with self.assertRaisesRegex(ValueError, "attribute"):
+            validate_evidence_spans(self.make_result(item), note)
+
+    def test_detects_active_status_conflict_without_dropping_source_mention(self):
+        cases = (
+            "Assessment: no diabetes.",
+            "Assessment: possible diabetes.",
+            "History of diabetes.",
+        )
+        for note in cases:
+            with self.subTest(note=note):
+                item = self.make_item(
+                    note,
+                    "diabetes",
+                    entity="diabetes",
+                    status="active",
+                )
+                self.assertIsNotNone(
+                    validate_item_status_context(item, note)
+                )
+
+    def test_detects_missing_context_for_historical_and_suspected_findings(self):
+        for status in ("historical", "suspected", "ruled_out"):
+            with self.subTest(status=status):
+                note = "Assessment: diabetes."
+                item = self.make_item(
+                    note,
+                    "diabetes",
+                    entity="diabetes",
+                    status=status,
+                )
+                self.assertIsNotNone(
+                    validate_item_status_context(item, note)
+                )
+
+    def test_does_not_mix_semicolon_separated_historical_and_current_context(self):
+        note = "History of diabetes; current diabetes."
+        evidence = "current diabetes"
+        item = self.make_item(
+            note,
+            evidence,
+            entity="diabetes",
+            status="active",
+        )
+
+        self.assertIsNone(validate_item_status_context(item, note))
 
 class ExtractionServiceTests(SimpleTestCase):
     """Tests for the provider-independent extraction service."""
@@ -406,6 +548,17 @@ class ExtractionPipelineTests(SimpleTestCase):
             "synthetic private failure details",
             str(context.exception),
         )
+
+    def test_provider_timeout_has_a_safe_timeout_code(self):
+        provider = self.SyntheticProvider(
+            error=TimeoutError("synthetic timeout details")
+        )
+
+        with self.assertRaises(ExtractionProviderError) as context:
+            run_extraction(provider, self.note)
+
+        self.assertEqual(context.exception.code, "provider_timeout")
+        self.assertNotIn("synthetic timeout details", str(context.exception))
 
     def test_non_string_note_is_rejected_before_provider_call(self):
         provider = self.SyntheticProvider(

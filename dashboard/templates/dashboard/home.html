@@ -44,18 +44,49 @@
             <p class="eyebrow">REQUIRES ATTENTION</p>
             <h2>Priority review queue</h2>
             <p class="section-description">
-                Extraction and review features are not implemented yet.
+                Authorized processing runs that require human review.
             </p>
         </div>
     </div>
 
+    {% if review_queue %}
+    <div class="panel">
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th scope="col">Patient</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Created</th>
+                        <th scope="col">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for run in review_queue %}
+                    <tr>
+                        <td>{{ run.clinical_note.encounter.patient.identifier }}</td>
+                        <td>{{ run.get_status_display }}</td>
+                        <td class="date-cell">{{ run.created_at|date:"d M Y, H:i" }}</td>
+                        <td>
+                            <a class="btn btn-outline-secondary btn-sm"
+                               href="{% url 'dashboard:processing_run_detail' run_id=run.pk %}">
+                                Review
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
     <div class="panel empty-state compact-empty-state">
         <h2>No review items yet</h2>
         <p>
-            Review items will appear after the extraction and verification
-            workflow has been implemented.
+            No authorized processing runs currently require review.
         </p>
     </div>
+    {% endif %}
 </section>
 
 <section class="content-section">

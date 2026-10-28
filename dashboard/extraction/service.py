@@ -3,6 +3,7 @@
 from pydantic import ValidationError
 
 from dashboard.extraction.schema import (
+    EvidenceSpanValidationError,
     ExtractionResult,
     validate_evidence_spans,
 )
@@ -11,9 +12,16 @@ from dashboard.extraction.schema import (
 class ExtractionOutputError(ValueError):
     """Raised when extraction output fails validation."""
 
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        detail_code: str | None = None,
+    ) -> None:
         super().__init__(message)
         self.code = code
+        self.detail_code = detail_code
 
 
 def validate_extraction_output(
@@ -53,9 +61,15 @@ def validate_extraction_output(
     try:
         validate_evidence_spans(result, original_note)
     except (ValueError, TypeError) as exc:
+        detail_code = (
+            exc.code
+            if isinstance(exc, EvidenceSpanValidationError)
+            else None
+        )
         raise ExtractionOutputError(
             code="evidence_validation_failed",
             message="Evidence text or offsets failed source validation.",
+            detail_code=detail_code,
         ) from exc
 
     # Nothing is persisted here. Callers receive only a fully

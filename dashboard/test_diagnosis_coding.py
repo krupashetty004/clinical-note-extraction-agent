@@ -7,6 +7,11 @@ from pydantic import ValidationError
 
 from dashboard.extraction.coding_schema import ICD10CodingResult
 from dashboard.extraction.diagnosis_coding import code_diagnoses
+from dashboard.extraction.icd10_search import (
+    ICD10Candidate,
+    ICD10LookupResult,
+    search_icd10,
+)
 from dashboard.extraction.service import ExtractionOutputError
 from dashboard.models import ICDCode
 
@@ -156,3 +161,69 @@ class DiagnosisCodingIntegrationTests(TestCase):
             coding.candidates[0].code,
             "TST002",
         )
+
+    def test_does_not_code_ruled_out_diagnosis_as_confirmed(self):
+        note = "Assessment: diabetes was ruled out."
+        payload = self.make_payload(
+            note,
+            entity="diabetes",
+            evidence="diabetes",
+            status="ruled_out",
+        )
+
+        result = code_diagnoses(payload, note)
+        coding = result.diagnoses[0].coding
+
+        self.assertEqual(coding.status, "no_confident_match")
+        self.assertEqual(coding.candidates, ())
+        self.assertIn("ruled-out", coding.reason.lower())
+
+    def test_semantic_fallback_reason_is_not_stored_as_confident_reason(self):
+        note = (
+            "Assessment: "
+            "Type 2 diabetes mellitus without complications."
+        )
+        payload = self.make_payload(note)
+
+        with patch(
+            "dashboard.extraction.diagnosis_coding.search_hybrid_icd10"
+        ) as mocked_search:
+            mocked_search.return_value = ICD10LookupResult(
+                query=payload["items"][0]["entity"],
+                status="candidates_found",
+                candidates=(
+                    ICD10Candidate(
+                        code="TST001",
+                        description=(
+                            "Type 2 diabetes mellitus without complications"
+                        ),
+                        lexical_score=1.0,
+                    ),
+                ),
+                reason="Semantic retrieval is unavailable.",
+            )
+            result = code_diagnoses(payload, note)
+
+        self.assertIsNone(result.diagnoses[0].coding.reason)
+    def setUp(self):
+        def lexical_search_compat(
+            query,
+            *,
+            limit=5,
+            minimum_lexical_score=0.6,
+            minimum_semantic_score=0.83,
+        ):
+            # Use lexical search as a deterministic test substitute.
+            # Hybrid semantic retrieval is tested in its own test module.
+            return search_icd10(
+                query,
+                limit=limit,
+                minimum_lexical_score=minimum_lexical_score,
+            )
+
+        self.hybrid_patcher = patch(
+            "dashboard.extraction.diagnosis_coding.search_hybrid_icd10",
+            side_effect=lexical_search_compat,
+        )
+        self.mock_hybrid_search = self.hybrid_patcher.start()
+        self.addCleanup(self.hybrid_patcher.stop)

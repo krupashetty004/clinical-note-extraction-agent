@@ -1,0 +1,85 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+{% block breadcrumb_label %}Knowledge base{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4 knowledge-composer-page">
+    <div class="knowledge-composer-heading">
+        <div>
+            <p class="eyebrow">KNOWLEDGE BASE</p>
+            <h1>{% if is_edit %}Edit document{% else %}Add to knowledge base{% endif %}</h1>
+            <p class="text-muted mb-0">Type, dictate, or attach a source. Review extracted content before publishing.</p>
+        </div>
+        <a class="btn btn-outline-secondary" href="{% if is_edit and document %}{% url 'dashboard:knowledge_document_detail' document.pk %}{% else %}{% url 'dashboard:knowledge_base' %}{% endif %}">Cancel</a>
+    </div>
+
+    {% if form.non_field_errors %}
+    <div class="alert alert-danger">{% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}</div>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data" class="knowledge-composer">
+        {% csrf_token %}
+        <div class="knowledge-composer-card">
+            <label class="visually-hidden" for="{{ form.title.id_for_label }}">Title</label>
+            {{ form.title }}
+            {% for error in form.title.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+
+            <div class="knowledge-editor">
+                <label class="visually-hidden" for="{{ form.content.id_for_label }}">Content</label>
+                {{ form.content }}
+                <div class="knowledge-editor-toolbar">
+                    <div class="knowledge-editor-actions">
+                        <button class="composer-icon-button" type="button" data-voice-input="{{ form.content.id_for_label }}" aria-label="Dictate content" title="Dictate content">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.5a3.5 3.5 0 0 0 3.5-3.5V6a3.5 3.5 0 0 0-7 0v5a3.5 3.5 0 0 0 3.5 3.5ZM19 11a7 7 0 0 1-14 0M12 18v4M8 22h8"></path></svg>
+                        </button>
+                        <label class="composer-icon-button" for="{{ form.source_file.id_for_label }}" aria-label="Attach a file" title="Attach PDF, image, or text file">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+                        </label>
+                        <span class="composer-file-name" data-file-name>No file attached</span>
+                        {{ form.source_file }}
+                    </div>
+                    <span class="composer-hint" data-voice-status>Type normally or use the microphone</span>
+                </div>
+            </div>
+            {% if form.content.errors %}<div class="text-danger small mt-2">{{ form.content.errors|join:", " }}</div>{% endif %}
+            {% if form.source_file.errors %}<div class="text-danger small mt-2">{{ form.source_file.errors|join:", " }}</div>{% endif %}
+            <div class="form-text mt-2">Supported: PDF, PNG, JPG, JPEG, TXT, and Markdown · max 10 MB · attachments open as review drafts.</div>
+        </div>
+
+        <details class="knowledge-advanced">
+            <summary>Details and publishing options</summary>
+            <div class="row g-3 pt-3">
+                <div class="col-md-8">
+                    <label class="form-label" for="{{ form.summary.id_for_label }}">Summary</label>
+                    {{ form.summary }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="{{ form.priority.id_for_label }}">Priority</label>
+                    {{ form.priority }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="{{ form.source_title.id_for_label }}">Source title</label>
+                    {{ form.source_title }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="{{ form.source_url.id_for_label }}">Source URL</label>
+                    {{ form.source_url }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="{{ form.source_quote.id_for_label }}">Citation quote</label>
+                    {{ form.source_quote }}
+                </div>
+                <div class="col-12">
+                    <div class="form-check">{{ form.is_active }}<label class="form-check-label" for="{{ form.is_active.id_for_label }}">Publish as active after review</label></div>
+                </div>
+            </div>
+        </details>
+
+        <div class="knowledge-composer-footer">
+            <span class="text-muted small">Content stays editable until you save.</span>
+            <button class="btn btn-primary px-4" type="submit">{% if is_edit %}Save document{% else %}Save to knowledge base{% endif %}</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

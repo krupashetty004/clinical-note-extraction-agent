@@ -93,6 +93,43 @@
                     </p>
 
                     <div class="original-note-text">{{ note.original_text }}</div>
+
+                    {% if synthetic_demo_enabled %}
+                        <form method="post"
+                              action="{% url 'dashboard:run_synthetic_processing_demo' note_id=note.pk %}"
+                              class="mb-3">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-outline-warning btn-sm">
+                                Run synthetic demo (no AI)
+                            </button>
+                        </form>
+                    {% endif %}
+
+                    <div class="processing-run-history mt-3">
+                        <h4 class="h6">Processing history</h4>
+
+                        {% for run in note.processing_runs.all %}
+                            <div class="processing-run-entry mb-2">
+                                <a
+                                    href="{% url 'dashboard:processing_run_detail' run_id=run.pk %}"
+                                >
+                                    Processing run #{{ run.pk }}
+                                </a>
+
+                                <span class="status-pill">
+                                    {{ run.get_status_display }}
+                                </span>
+
+                                <small class="text-muted">
+                                    {{ run.created_at|date:"d M Y, H:i" }}
+                                </small>
+                            </div>
+                        {% empty %}
+                            <p class="small text-muted">
+                                No processing runs recorded for this note version.
+                            </p>
+                        {% endfor %}
+                    </div>
                 </div>
             {% empty %}
                 <p class="empty-note">
@@ -159,6 +196,43 @@
                     </p>
 
                     <div class="original-note-text">{{ note.original_text }}</div>
+
+                    {% if synthetic_demo_enabled %}
+                        <form method="post"
+                              action="{% url 'dashboard:run_synthetic_processing_demo' note_id=note.pk %}"
+                              class="mb-3">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-outline-warning btn-sm">
+                                Run synthetic demo (no AI)
+                            </button>
+                        </form>
+                    {% endif %}
+
+                    <div class="processing-run-history mt-3">
+                        <h4 class="h6">Processing history</h4>
+
+                        {% for run in note.processing_runs.all %}
+                            <div class="processing-run-entry mb-2">
+                                <a
+                                    href="{% url 'dashboard:processing_run_detail' run_id=run.pk %}"
+                                >
+                                    Processing run #{{ run.pk }}
+                                </a>
+
+                                <span class="status-pill">
+                                    {{ run.get_status_display }}
+                                </span>
+
+                                <small class="text-muted">
+                                    {{ run.created_at|date:"d M Y, H:i" }}
+                                </small>
+                            </div>
+                        {% empty %}
+                            <p class="small text-muted">
+                                No processing runs recorded for this note version.
+                            </p>
+                        {% endfor %}
+                    </div>
                 </div>
             {% empty %}
                 <p class="empty-note">

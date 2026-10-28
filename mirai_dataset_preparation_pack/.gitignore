@@ -1,0 +1,9 @@
+# Raw source dataset and any derived note text should remain local.
+data/external/mtsamples/raw/*
+!data/external/mtsamples/raw/.gitkeep
+data/external/mtsamples/prepared/*
+!data/external/mtsamples/prepared/.gitkeep
+data/external/mtsamples/annotations/*
+!data/external/mtsamples/annotations/.gitkeep
+reports/dataset_quality_report.json
+reports/dataset_quality_report.md

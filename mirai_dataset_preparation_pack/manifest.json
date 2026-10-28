@@ -1,0 +1,36 @@
+{
+  "package_name": "mirai-kaggle-dataset-preparation",
+  "prepared_on": "2026-10-23",
+  "primary_candidate": {
+    "name": "Medical Transcriptions (MTSamples)",
+    "kaggle_dataset_id": "tboyle10/medicaltranscriptions",
+    "url": "https://www.kaggle.com/datasets/tboyle10/medicaltranscriptions/data",
+    "publisher": "Tara Boyle (Kaggle account tboyle10)",
+    "upstream_source_reported_by_kaggle": "mtsamples.com",
+    "license_as_declared_on_kaggle_page": "CC0: Public Domain",
+    "pre_download_metadata_only": {
+      "reported_rows": 4999,
+      "reported_columns": 6,
+      "file_name": "mtsamples.csv",
+      "reported_kaggle_file_size": "about 17.01 MB"
+    }
+  },
+  "raw_dataset_included": false,
+  "reason_raw_dataset_not_included": "Could not retrieve raw archive from current assistant execution environment; user must download through Kaggle or locally authenticated Kaggle CLI.",
+  "labels_known_from_public_metadata": [
+    "medical_specialty",
+    "keywords (unverified as gold labels)",
+    "description"
+  ],
+  "labels_not_evidenced_in_source_metadata": [
+    "gold entity spans",
+    "entity assertion/status",
+    "evidence offsets",
+    "note-specific ICD-10-CM reference codes",
+    "adjudicated contradictions",
+    "adversarial-case labels"
+  ],
+  "network_requests_to_ai_providers": 0,
+  "data_handling": "Local-only. Analysis script does not call external APIs. Raw and derived note text is intended to stay in local ignored folders.",
+  "next_action": "Download the official Kaggle archive, place mtsamples.csv in data/external/mtsamples/raw/, then run scripts/analyze_mtsamples.py."
+}

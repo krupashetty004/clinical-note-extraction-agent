@@ -11,7 +11,14 @@ from dashboard.extraction.service import (
 class ExtractionProviderError(RuntimeError):
     """Raised when a provider fails to return an extraction payload."""
 
-    code = "provider_failed"
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "provider_failed",
+    ) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def run_extraction(
@@ -28,9 +35,20 @@ def run_extraction(
 
     try:
         payload = provider.extract(original_note)
+    except TimeoutError as exc:
+        raise ExtractionProviderError(
+            "The extraction provider timed out.",
+            code="provider_timeout",
+        ) from exc
     except Exception as exc:
         # Do not include provider exception details because they could
         # contain note text, credentials, or other sensitive values.
+        provider_code = getattr(exc, "code", "provider_failed")
+        if provider_code == "provider_timeout":
+            raise ExtractionProviderError(
+                "The extraction provider timed out.",
+                code="provider_timeout",
+            ) from exc
         raise ExtractionProviderError(
             "The extraction provider failed."
         ) from exc

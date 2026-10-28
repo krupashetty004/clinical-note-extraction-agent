@@ -1,0 +1,230 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+{% block breadcrumb_label %}Annotation{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
+        <div>
+            <h1 class="h3 mb-1">{{ record.record_id }}</h1>
+            <div class="text-muted">{{ record.specialty }} · source row {{ record.source_row_number }}</div>
+        </div>
+        <div class="btn-group" role="group" aria-label="Navigation">
+            <a class="btn btn-outline-secondary" href="{% url 'dashboard:annotation_queue' %}">Queue</a>
+            <span class="btn btn-light disabled">Item {{ queue_index|add:1 }} / {{ queue|length }}</span>
+        </div>
+    </div>
+
+    {% if form.non_field_errors %}
+    <div class="alert alert-danger" role="alert">
+        {{ form.non_field_errors }}
+    </div>
+    {% endif %}
+
+    {% if validation_errors %}
+    <div class="alert alert-warning" role="alert">
+        <strong>Validation warning:</strong>
+        <ul class="mb-0">
+            {% for error in validation_errors %}
+            <li>{{ error }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if record.provisional_annotations %}
+    <div class="alert alert-info" role="alert">
+        <strong>UNVERIFIED provisional suggestions</strong>
+        <div class="small mt-2">
+            {% for category, items in record.provisional_annotations.items %}
+                {% if items %}
+                    <div class="mb-2">
+                        <strong>{{ category|title }}</strong>
+                        {% for item in items %}
+                            <span class="badge text-bg-light border me-1 mb-1">{{ item.entity }}</span>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="row g-4">
+        <div class="col-lg-5">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-light">
+                    <strong>Source note</strong>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="small text-uppercase text-muted">Specialty</div>
+                        <div>{{ record.specialty }}</div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="small text-uppercase text-muted">Source</div>
+                        <div>{{ record.source_dataset }}</div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="small text-uppercase text-muted">Keywords</div>
+                        <div>{{ record.source_keywords }}</div>
+                    </div>
+                    <div class="small text-uppercase text-muted">Original note</div>
+                    <pre class="bg-light rounded p-3 mt-2 mb-0" style="white-space: pre-wrap;">{{ record.note_text }}</pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-7">
+            <form method="post" class="card shadow-sm border-0">
+                {% csrf_token %}
+                {{ form.record_id }}
+                {{ form.source_dataset }}
+                {{ form.source_url }}
+                <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <strong>Annotation form</strong>
+                    <div class="form-check form-switch">
+                        {{ form.annotation_complete }}
+                        <label class="form-check-label" for="{{ form.annotation_complete.id_for_label }}">Complete gold annotation</label>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.specialty.id_for_label }}">Specialty</label>
+                            {{ form.specialty }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.annotator_id.id_for_label }}">Annotator ID</label>
+                            {{ form.annotator_id }}
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.adjudication_status.id_for_label }}">Adjudication status</label>
+                            {{ form.adjudication_status }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.conflict_status.id_for_label }}">Conflict status</label>
+                            {{ form.conflict_status }}
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.reviewer_decision.id_for_label }}">Reviewer decision</label>
+                            {{ form.reviewer_decision }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.source_row_number.id_for_label }}">Source row</label>
+                            {{ form.source_row_number }}
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="{{ form.note_text.id_for_label }}">Original note text</label>
+                        {{ form.note_text }}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="{{ form.source_keywords.id_for_label }}">Source keywords</label>
+                        {{ form.source_keywords }}
+                    </div>
+
+                    <div class="accordion" id="annotationAccordion">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingDiagnoses">
+                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDiagnoses" aria-expanded="true">
+                                    Diagnoses
+                                </button>
+                            </h2>
+                            <div id="collapseDiagnoses" class="accordion-collapse collapse show" data-bs-parent="#annotationAccordion">
+                                <div class="accordion-body">
+                                    {{ form.diagnoses }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingProcedures">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseProcedures" aria-expanded="false">
+                                    Procedures
+                                </button>
+                            </h2>
+                            <div id="collapseProcedures" class="accordion-collapse collapse" data-bs-parent="#annotationAccordion">
+                                <div class="accordion-body">
+                                    {{ form.procedures }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingMedications">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseMedications" aria-expanded="false">
+                                    Medications
+                                </button>
+                            </h2>
+                            <div id="collapseMedications" class="accordion-collapse collapse" data-bs-parent="#annotationAccordion">
+                                <div class="accordion-body">
+                                    {{ form.medications }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingAllergies">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseAllergies" aria-expanded="false">
+                                    Allergies
+                                </button>
+                            </h2>
+                            <div id="collapseAllergies" class="accordion-collapse collapse" data-bs-parent="#annotationAccordion">
+                                <div class="accordion-body">
+                                    {{ form.allergies }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingVitals">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseVitals" aria-expanded="false">
+                                    Vitals
+                                </button>
+                            </h2>
+                            <div id="collapseVitals" class="accordion-collapse collapse" data-bs-parent="#annotationAccordion">
+                                <div class="accordion-body">
+                                    {{ form.vital_signs }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingICD">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseICD" aria-expanded="false">
+                                    ICD-10-CM
+                                </button>
+                            </h2>
+                            <div id="collapseICD" class="accordion-collapse collapse" data-bs-parent="#annotationAccordion">
+                                <div class="accordion-body">
+                                    {{ form.icd10_cm_codes }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <label class="form-label" for="{{ form.conflict_notes.id_for_label }}">Conflict notes</label>
+                        {{ form.conflict_notes }}
+                    </div>
+
+                    <div class="mt-3">
+                        <label class="form-label" for="{{ form.reviewer_comment.id_for_label }}">Reviewer comment</label>
+                        {{ form.reviewer_comment }}
+                    </div>
+
+                    <div class="d-flex justify-content-between flex-wrap gap-2 mt-4">
+                        <button type="submit" name="action" value="save" class="btn btn-primary">Save draft</button>
+                        <button type="submit" name="action" value="export" class="btn btn-success">Validate & export</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

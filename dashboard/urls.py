@@ -20,6 +20,51 @@ urlpatterns = [
         name="knowledge_base",
     ),
     path(
+        "knowledge-base/new/",
+        views.knowledge_document_new,
+        name="knowledge_document_new",
+    ),
+    path(
+        "knowledge-base/<int:doc_id>/",
+        views.knowledge_document_detail,
+        name="knowledge_document_detail",
+    ),
+    path(
+        "knowledge-base/<int:doc_id>/edit/",
+        views.knowledge_document_edit,
+        name="knowledge_document_edit",
+    ),
+    path(
+    "processing-runs/<int:run_id>/",
+    views.processing_run_detail,
+    name="processing_run_detail",
+    ),
+    path(
+        "processing-runs/<int:run_id>/review/",
+        views.review_processing_run,
+        name="review_processing_run",
+    ),
+    path(
+        "notes/<int:note_id>/run-synthetic-demo/",
+        views.run_synthetic_processing_demo,
+        name="run_synthetic_processing_demo",
+    ),
+    path(
+        "annotation/",
+        views.annotation_queue,
+        name="annotation_queue",
+    ),
+    path(
+        "annotation/export/",
+        views.annotation_export,
+        name="annotation_export",
+    ),
+    path(
+        "annotation/<str:record_id>/",
+        views.annotation_detail,
+        name="annotation_detail",
+    ),
+    path(
         "encounters/<int:encounter_id>/notes/new/",
         views.clinical_note_create,
         name="clinical_note_create",

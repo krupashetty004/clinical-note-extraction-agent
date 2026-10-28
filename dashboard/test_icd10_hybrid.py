@@ -5,7 +5,11 @@ from unittest.mock import patch
 from django.test import TestCase
 
 from dashboard.extraction.icd10_search import search_hybrid_icd10
-from dashboard.extraction.icd10_semantic import SemanticCandidate
+from dashboard.extraction.icd10_semantic import (
+    SemanticCandidate,
+    SemanticIndexConfigurationError,
+    SemanticIndexNotReadyError,
+)
 from dashboard.models import ICDCode
 
 
@@ -136,3 +140,43 @@ class HybridICD10SearchTests(TestCase):
         self.assertEqual(result.status, "no_confident_match")
         self.assertEqual(result.candidates, ())
         mock_semantic.assert_not_called()
+
+        @patch("dashboard.extraction.icd10_semantic.search_semantic_icd10")
+        def test_uses_lexical_fallback_when_index_is_not_ready(
+            self,
+            mock_semantic,
+        ):
+            mock_semantic.side_effect = SemanticIndexNotReadyError(
+                "Test index is missing."
+            )
+
+            result = search_hybrid_icd10(
+                "Type 2 diabetes mellitus without complications"
+            )
+
+            self.assertEqual(result.status, "candidates_found")
+            self.assertEqual(result.candidates[0].code, "TST001")
+            self.assertEqual(result.candidates[0].lexical_score, 1.0)
+            self.assertIsNone(result.candidates[0].semantic_score)
+            self.assertIsNotNone(result.reason)
+            self.assertIn("lexical-only", result.reason.lower())
+            self.assertIn("review", result.reason.lower())
+
+    @patch("dashboard.extraction.icd10_semantic.search_semantic_icd10")
+    def test_uses_lexical_fallback_when_index_is_unconfigured(
+        self,
+        mock_semantic,
+    ):
+        mock_semantic.side_effect = SemanticIndexConfigurationError(
+            "Test index configuration is missing."
+        )
+
+        result = search_hybrid_icd10(
+            "Type 2 diabetes mellitus without complications"
+        )
+
+        self.assertEqual(result.status, "candidates_found")
+        self.assertEqual(result.candidates[0].code, "TST001")
+        self.assertIsNone(result.candidates[0].semantic_score)
+        self.assertIsNotNone(result.reason)
+        self.assertIn("semantic retrieval is unavailable", result.reason.lower())

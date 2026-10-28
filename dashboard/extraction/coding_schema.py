@@ -172,5 +172,5 @@ def coding_result_from_lookup(
         status=result.status,
         candidate_disposition=disposition,
         candidates=candidates,
-        reason=result.reason,
+        reason=result.reason if result.status != "candidates_found" else None,
     )

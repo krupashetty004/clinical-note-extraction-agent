@@ -710,6 +710,227 @@ a {
     background: var(--accent-dark);
 }
 
+.voice-input-wrap {
+    position: relative;
+}
+
+.knowledge-composer-page {
+    max-width: 980px;
+}
+
+.knowledge-composer-heading,
+.knowledge-composer-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 24px;
+}
+
+.knowledge-composer-heading h1 {
+    margin: 0 0 5px;
+    font-size: 24px;
+}
+
+.knowledge-composer-card {
+    padding: 22px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 8px 24px rgba(31, 53, 67, 0.06);
+}
+
+.knowledge-composer-card > input[name="title"] {
+    width: 100%;
+    padding: 10px 0;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 18px;
+    font-weight: 650;
+}
+
+.knowledge-composer-card > input[name="title"]:focus {
+    outline: 0;
+    border-color: var(--accent);
+}
+
+.knowledge-editor {
+    position: relative;
+    margin-top: 15px;
+}
+
+.knowledge-editor textarea {
+    min-height: 230px;
+    padding: 14px 16px 58px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    resize: vertical;
+}
+
+.knowledge-editor textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(39, 135, 119, 0.12);
+}
+
+.knowledge-editor-toolbar {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.knowledge-editor-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.composer-icon-button {
+    display: inline-grid;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    place-items: center;
+    border: 1px solid #d4dce4;
+    border-radius: 50%;
+    background: #ffffff;
+    color: var(--accent-dark);
+    cursor: pointer;
+}
+
+.composer-icon-button:hover {
+    background: #e8f3ef;
+}
+
+.composer-icon-button.is-listening {
+    border-color: #d9534f;
+    background: #d9534f;
+    color: #ffffff;
+}
+
+.composer-icon-button svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+}
+
+.knowledge-editor input[type="file"] {
+    display: none;
+}
+
+.composer-file-name,
+.composer-hint {
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+
+.knowledge-advanced {
+    margin-top: 16px;
+    padding: 14px 18px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: #ffffff;
+}
+
+.knowledge-advanced summary {
+    color: var(--accent-dark);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.knowledge-composer-footer {
+    margin-top: 18px;
+    margin-bottom: 0;
+}
+
+.voice-input-wrap textarea {
+    min-height: 260px;
+    padding-right: 64px;
+}
+
+.voice-input-button {
+    position: absolute;
+    z-index: 2;
+    top: 12px;
+    right: 12px;
+    display: inline-grid;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    place-items: center;
+    border: 1px solid #cbd5e1;
+    border-radius: 50%;
+    background: #ffffff;
+    color: var(--accent-dark);
+    box-shadow: 0 2px 8px rgba(31, 53, 67, 0.14);
+    cursor: pointer;
+    transition: color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.voice-input-button:hover:not(:disabled) {
+    background: #e8f3ef;
+    transform: translateY(-1px);
+}
+
+.voice-input-button:focus-visible {
+    outline: 3px solid rgba(39, 135, 119, 0.3);
+    outline-offset: 2px;
+}
+
+.voice-input-button.is-listening {
+    background: #d9534f;
+    border-color: #d9534f;
+    color: #ffffff;
+    animation: voice-pulse 1.3s ease-in-out infinite;
+}
+
+.voice-input-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.upload-source-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.upload-source-icon {
+    width: 22px;
+    height: 22px;
+    flex: 0 0 auto;
+    fill: none;
+    stroke: var(--accent-dark);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+}
+
+.voice-input-icon {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+}
+
+@keyframes voice-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(217, 83, 79, 0.28); }
+    50% { box-shadow: 0 0 0 8px rgba(217, 83, 79, 0); }
+}
+
 /* Authentication */
 
 .auth-page {

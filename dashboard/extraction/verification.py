@@ -20,6 +20,8 @@ from pydantic import (
 from dashboard.extraction.schema import (
     EntityCategory,
     ExtractionResult,
+    entity_evidence_is_grounded,
+    validate_item_status_context,
     validate_evidence_spans,
 )
 
@@ -146,9 +148,16 @@ class VerificationResult(BaseModel):
 class VerificationOutputError(ValueError):
     """Raised when a verifier response fails contract validation."""
 
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        detail_code: str | None = None,
+    ) -> None:
         super().__init__(message)
         self.code = code
+        self.detail_code = detail_code
 
 
 def validate_verification_output(
@@ -221,6 +230,17 @@ def validate_verification_output(
                 "Status checks are not applicable to this category.",
             )
 
+        status_context_error = validate_item_status_context(
+            item,
+            original_note,
+        )
+        if status_context_error is not None and check.status_check == "correct":
+            raise VerificationOutputError(
+                "verification_status_check_invalid",
+                "Verification marked a source status conflict as correct.",
+                detail_code="status_context_mismatch",
+            )
+
         if (
             check.outcome in {"supported", "contradicted"}
             and not check.evidence
@@ -228,6 +248,19 @@ def validate_verification_output(
             raise VerificationOutputError(
                 "verification_evidence_failed",
                 "Supported or contradicted findings require evidence.",
+                detail_code="required_evidence_missing",
+            )
+        if check.evidence and not entity_evidence_is_grounded(
+            item.entity,
+            " ".join(
+                reference.evidence_text
+                for reference in check.evidence
+            ),
+        ):
+            raise VerificationOutputError(
+                "verification_evidence_failed",
+                "Verification evidence does not support the extracted entity.",
+                detail_code="evidence_entity_mismatch",
             )
 
     references = [
@@ -245,6 +278,7 @@ def validate_verification_output(
             raise VerificationOutputError(
                 "verification_evidence_failed",
                 "A verification evidence span exceeds the original note.",
+                detail_code="evidence_offset_out_of_bounds",
             )
 
         actual_text = original_note[
@@ -255,6 +289,18 @@ def validate_verification_output(
             raise VerificationOutputError(
                 "verification_evidence_failed",
                 "A verification evidence span does not match the original note.",
+                detail_code="evidence_text_offset_mismatch",
+            )
+
+    for omission in result.potential_omissions:
+        if not entity_evidence_is_grounded(
+            omission.entity,
+            omission.evidence.evidence_text,
+        ):
+            raise VerificationOutputError(
+                "verification_evidence_failed",
+                "Omission evidence does not support the omitted entity.",
+                detail_code="evidence_entity_mismatch",
             )
 
     return result

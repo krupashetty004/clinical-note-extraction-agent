@@ -4,6 +4,9 @@ import argparse
 import sys
 from pathlib import Path
 
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from dashboard.extraction.icd10 import iter_icd10_code_file
 
 

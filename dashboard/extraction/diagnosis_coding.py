@@ -1,4 +1,4 @@
-"""Connect validated diagnosis mentions to ICD-10 candidate retrieval."""
+"""Connect validated diagnosis mentions to hybrid ICD-10 retrieval."""
 
 from typing import cast
 
@@ -8,7 +8,11 @@ from dashboard.extraction.coding_schema import (
     ICD10CodingResult,
     coding_result_from_lookup,
 )
-from dashboard.extraction.icd10_search import search_icd10
+from dashboard.extraction.icd10_search import (
+    ICD10LookupResult,
+    search_hybrid_icd10,
+    search_icd10,
+)
 from dashboard.extraction.schema import DiagnosisStatus
 from dashboard.extraction.service import validate_extraction_output
 
@@ -40,15 +44,16 @@ def code_diagnoses(
     *,
     limit: int = 5,
     minimum_lexical_score: float = 0.6,
+    minimum_semantic_score: float = 0.83,
 ) -> DiagnosisCodingBatch:
-    """Validate extraction output, then retrieve candidates for diagnoses.
+    """Validate extraction output and retrieve hybrid ICD-10 candidates.
 
-    Original evidence and mention status are preserved in the output.
+    Original evidence and mention status are preserved.
     Non-diagnosis mentions are not sent to ICD-10 retrieval.
 
-    This function performs no database writes. A candidate is a
-    reference suggestion, not confirmation that a diagnosis is
-    clinically correct.
+    Candidate codes are suggestions, not confirmed diagnoses.
+    The semantic threshold is provisional and requires evaluation
+    against labelled examples.
     """
     extraction = validate_extraction_output(payload, original_note)
     coded_diagnoses: list[CodedDiagnosisMention] = []
@@ -57,11 +62,23 @@ def code_diagnoses(
         if item.category != "diagnosis":
             continue
 
-        lookup = search_icd10(
-            item.entity,
-            limit=limit,
-            minimum_lexical_score=minimum_lexical_score,
-        )
+        if item.status == "ruled_out":
+            lookup = ICD10LookupResult(
+                query=item.entity,
+                status="no_confident_match",
+                candidates=(),
+                reason=(
+                    "Ruled-out diagnoses are retained for review and are "
+                    "not coded as confirmed conditions."
+                ),
+            )
+        else:
+            lookup = search_hybrid_icd10(
+                item.entity,
+                limit=limit,
+                minimum_lexical_score=minimum_lexical_score,
+                minimum_semantic_score=minimum_semantic_score,
+            )
 
         coded_diagnoses.append(
             CodedDiagnosisMention(

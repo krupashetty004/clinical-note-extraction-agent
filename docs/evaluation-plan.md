@@ -52,6 +52,28 @@ Evaluate whether the proposed system:
 
 These are not achieved values. Mark them Pass/Fail/Not yet measured only after recording results.
 
+### Offline report assembly
+
+The repository provides an offline report runner that combines the recorded
+40-case challenge observations, deterministic smoke output, annotation-queue
+qualification state, optional operational records, and optional baseline
+results without treating fixtures as clinical performance:
+
+```powershell
+python evaluation\run_challenge_evaluation.py `
+  --input evaluation\challenge_observations.json `
+  --output $env:TEMP\mirai-challenge-report.json
+python evaluation\run_synthetic_smoke.py > $env:TEMP\mirai-smoke-report.json
+python evaluation\sow_report.py `
+  --queue mirai_dataset_preparation_pack\data\external\mtsamples\annotations\annotation_template_100.jsonl `
+  --challenge-report $env:TEMP\mirai-challenge-report.json `
+  --smoke-report $env:TEMP\mirai-smoke-report.json `
+  --output $env:TEMP\mirai-sow-report.json
+```
+
+The report marks clinical metrics `NOT EVALUATED` until qualified gold cases,
+comparable baseline predictions, and recorded provider operations exist.
+
 ## 3. Metric and Test Rules
 
 - Define exact and partial entity matching before evaluation, and apply the same rules to both systems.

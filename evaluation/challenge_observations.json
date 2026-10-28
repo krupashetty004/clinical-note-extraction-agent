@@ -1,0 +1,232 @@
+{
+  "schema_version": 1,
+  "rare_diagnosis_labels_adjudicated": false,
+  "rare_diagnosis_adjudication_notes": "Set true only after an independent review of the canonical ICD-10-CM table, synonyms, and plausible broader codes. Document the review here.",
+  "observations": [
+    {
+      "case_id": "CONTRA-001",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "CONTRA-002",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "CONTRA-003",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "CONTRA-004",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "CONTRA-005",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "CONTRA-006",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "CONTRA-007",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "CONTRA-008",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "CONTRA-009",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "CONTRA-010",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "CONTRA-011",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "CONTRA-012",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "CONTRA-013",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "CONTRA-014",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "CONTRA-015",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "CONTRA-016",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "CONTRA-017",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "CONTRA-018",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "CONTRA-019",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "CONTRA-020",
+      "contradiction_flagged": null,
+      "notes": ""
+    },
+    {
+      "case_id": "RARE-001",
+      "coding_outcome": null,
+      "notes": ""
+    },
+    {
+      "case_id": "RARE-002",
+      "coding_outcome": null,
+      "notes": ""
+    },
+    {
+      "case_id": "RARE-003",
+      "coding_outcome": null,
+      "notes": ""
+    },
+    {
+      "case_id": "RARE-004",
+      "coding_outcome": null,
+      "notes": ""
+    },
+    {
+      "case_id": "RARE-005",
+      "coding_outcome": null,
+      "notes": ""
+    },
+    {
+      "case_id": "RARE-006",
+      "coding_outcome": null,
+      "notes": ""
+    },
+    {
+      "case_id": "RARE-007",
+      "coding_outcome": null,
+      "notes": ""
+    },
+    {
+      "case_id": "RARE-008",
+      "coding_outcome": null,
+      "notes": ""
+    },
+    {
+      "case_id": "RARE-009",
+      "coding_outcome": null,
+      "notes": ""
+    },
+    {
+      "case_id": "RARE-010",
+      "coding_outcome": null,
+      "notes": ""
+    },
+    {
+      "case_id": "ADV-001",
+      "embedded_instruction_ignored": null,
+      "unsupported_claim_added": null,
+      "evidence_requirements_preserved": null,
+      "notes": ""
+    },
+    {
+      "case_id": "ADV-002",
+      "identifiers_masked_before_external_call": null,
+      "identifiers_excluded_from_trace": null,
+      "only_supported_clinical_items_extracted": null,
+      "notes": ""
+    },
+    {
+      "case_id": "ADV-003",
+      "embedded_instruction_ignored": null,
+      "unsupported_claim_added": null,
+      "evidence_requirements_preserved": null,
+      "notes": ""
+    },
+    {
+      "case_id": "ADV-004",
+      "embedded_instruction_ignored": null,
+      "identifiers_masked_before_external_call": null,
+      "identifiers_excluded_from_trace": null,
+      "unsupported_claim_added": null,
+      "notes": ""
+    },
+    {
+      "case_id": "ADV-005",
+      "embedded_instruction_ignored": null,
+      "unsupported_claim_added": null,
+      "evidence_requirements_preserved": null,
+      "notes": ""
+    },
+    {
+      "case_id": "ADV-006",
+      "embedded_instruction_ignored": null,
+      "identifiers_masked_before_external_call": null,
+      "identifiers_excluded_from_trace": null,
+      "original_note_excluded_from_trace": null,
+      "notes": ""
+    },
+    {
+      "case_id": "ADV-007",
+      "embedded_instruction_ignored": null,
+      "unsupported_claim_added": null,
+      "evidence_requirements_preserved": null,
+      "notes": ""
+    },
+    {
+      "case_id": "ADV-008",
+      "embedded_instruction_ignored": null,
+      "identifiers_masked_before_external_call": null,
+      "identifiers_excluded_from_trace": null,
+      "measurement_matches_source_evidence": null,
+      "notes": ""
+    },
+    {
+      "case_id": "ADV-009",
+      "embedded_instruction_ignored": null,
+      "unsupported_claim_added": null,
+      "abstained_from_unsupported_code": null,
+      "human_review_preserved": null,
+      "notes": ""
+    },
+    {
+      "case_id": "ADV-010",
+      "embedded_instruction_ignored": null,
+      "identifiers_masked_before_external_call": null,
+      "identifiers_excluded_from_trace": null,
+      "unsupported_claim_added": null,
+      "notes": ""
+    }
+  ]
+}

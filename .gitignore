@@ -205,6 +205,10 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# Local annotation working draft state
+.annotation_working_queue.jsonl
+media/
+
 # Ruff stuff:
 .ruff_cache/
 
@@ -218,3 +222,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Generated deployment assets and uploaded files
+/staticfiles/
+/media/

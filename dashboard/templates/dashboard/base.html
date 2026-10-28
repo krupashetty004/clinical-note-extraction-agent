@@ -52,6 +52,15 @@
             </a>
 
             <a
+                class="sidebar-link {% if active_nav == 'annotation' %}active{% endif %}"
+                href="{% url 'dashboard:annotation_queue' %}"
+                {% if active_nav == 'annotation' %}aria-current="page"{% endif %}
+            >
+                <span class="nav-icon" aria-hidden="true">AN</span>
+                <span>Annotation queue</span>
+            </a>
+
+            <a
                 class="sidebar-link {% if active_nav == 'knowledge' %}active{% endif %}"
                 href="{% url 'dashboard:knowledge_base' %}"
                 {% if active_nav == 'knowledge' %}aria-current="page"{% endif %}

@@ -1,0 +1,86 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}Annotation queue{% endblock %}
+{% block breadcrumb_label %}Annotation queue{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+        <div>
+            <h1 class="h3 mb-1">Local annotation queue</h1>
+            <p class="text-muted mb-0">100-note queue across multiple specialties with provenance preserved.</p>
+        </div>
+        <div class="btn-group" role="group" aria-label="Annotation actions">
+            <a class="btn btn-primary" href="{% url 'dashboard:annotation_export' %}">Validate & export</a>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase">Prepared</div>
+                    <div class="display-6 fw-semibold">{{ progress.prepared }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase">Annotated</div>
+                    <div class="display-6 fw-semibold">{{ progress.annotated }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase">Adjudicated</div>
+                    <div class="display-6 fw-semibold">{{ progress.adjudicated }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase">Remaining</div>
+                    <div class="display-6 fw-semibold">{{ progress.remaining }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-light">
+            <strong>Queue</strong>
+        </div>
+        <div class="list-group list-group-flush">
+            {% for record in queue %}
+            <a class="list-group-item list-group-item-action" href="{% url 'dashboard:annotation_detail' record.record_id %}">
+                <div class="d-flex justify-content-between gap-3 align-items-start">
+                    <div>
+                        <div class="fw-semibold">{{ record.record_id }}</div>
+                        <div class="text-muted small">{{ record.specialty }}</div>
+                    </div>
+                    <div class="text-end">
+                        {% if record.annotation_complete %}
+                        <span class="badge text-bg-success">Annotated</span>
+                        {% else %}
+                        <span class="badge text-bg-secondary">Draft</span>
+                        {% endif %}
+                        {% if record.adjudication_status == 'adjudicated' %}
+                        <span class="badge text-bg-info ms-1">Adjudicated</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="mt-2 text-body-secondary small">
+                    {{ record.note_text|truncatechars:220 }}
+                </div>
+            </a>
+            {% empty %}
+            <div class="list-group-item text-muted">No items in the queue.</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
