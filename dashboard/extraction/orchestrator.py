@@ -361,9 +361,9 @@ def run_agent_workflow(
             last_verification_code = _safe_verification_failure_code(exc)
             logger.warning(
                 "Verification provider invocation failed "
-                "(attempt=%s, exception_type=%s).",
+                "(attempt=%s, code=%s).",
                 verification_attempts,
-                type(exc).__name__,
+                last_verification_code,
             )
             continue
 
