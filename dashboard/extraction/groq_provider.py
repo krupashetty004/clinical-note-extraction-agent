@@ -278,6 +278,88 @@ or any potential omission is present. Do not claim clinical certainty. Output JS
 only; no Markdown or commentary."""
 
 
+_STRICT_JSON_SCHEMA_MODELS = frozenset({
+    "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b",
+})
+
+_VERIFICATION_RESPONSE_FORMAT: dict[str, Any] = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "mirai_clinical_verification",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "item_checks": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "item_index": {"type": "integer"},
+                            "outcome": {
+                                "type": "string",
+                                "enum": ["supported", "unsupported", "contradicted", "uncertain"],
+                            },
+                            "status_check": {
+                                "type": "string",
+                                "enum": ["correct", "incorrect", "uncertain", "not_applicable"],
+                            },
+                            "reason": {"type": "string"},
+                            "evidence": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "evidence_text": {"type": "string"},
+                                        "start_offset": {"type": "integer"},
+                                        "end_offset": {"type": "integer"},
+                                    },
+                                    "required": ["evidence_text", "start_offset", "end_offset"],
+                                    "additionalProperties": False,
+                                },
+                            },
+                        },
+                        "required": ["item_index", "outcome", "status_check", "reason", "evidence"],
+                        "additionalProperties": False,
+                    },
+                },
+                "potential_omissions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "category": {
+                                "type": "string",
+                                "enum": ["diagnosis", "medication", "procedure", "allergy", "vital_sign"],
+                            },
+                            "entity": {"type": "string"},
+                            "evidence": {
+                                "type": "object",
+                                "properties": {
+                                    "evidence_text": {"type": "string"},
+                                    "start_offset": {"type": "integer"},
+                                    "end_offset": {"type": "integer"},
+                                },
+                                "required": ["evidence_text", "start_offset", "end_offset"],
+                                "additionalProperties": False,
+                            },
+                            "reason": {"type": "string"},
+                        },
+                        "required": ["category", "entity", "evidence", "reason"],
+                        "additionalProperties": False,
+                    },
+                },
+                "needs_review": {"type": "boolean"},
+                "review_reasons": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["item_checks", "potential_omissions", "needs_review", "review_reasons"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
 class GroqExtractionProvider(_GroqJSONProvider):
     """Return JSON with evidence offsets computed locally before validation."""
 
@@ -353,6 +435,11 @@ class GroqVerificationProvider(_GroqJSONProvider):
             raise TypeError("extraction must be an ExtractionResult.")
         if not isinstance(coding, DiagnosisCodingBatch):
             raise TypeError("coding must be a DiagnosisCodingBatch.")
+        response_format = (
+            _VERIFICATION_RESPONSE_FORMAT
+            if self.model_id in _STRICT_JSON_SCHEMA_MODELS
+            else {"type": "json_object"}
+        )
         return self._request_json(
             system_prompt=_VERIFICATION_SYSTEM_PROMPT,
             user_payload={
@@ -360,6 +447,7 @@ class GroqVerificationProvider(_GroqJSONProvider):
                 "extraction": extraction.model_dump(mode="json"),
                 "coding_candidates": coding.model_dump(mode="json"),
             },
+            response_format=response_format,
         )
 
 
@@ -371,26 +459,13 @@ class GroqAnnotationProvider(_GroqJSONProvider):
             raise TypeError("original_note must be a string.")
         if not original_note.strip():
             raise ValueError("original_note must not be blank.")
-        # Groq strict JSON Schema mode is supported only by a limited set of
-        # model IDs. Use it for the supported GPT-OSS models; retain JSON Object
-        # Mode for other models and test doubles. The downstream validator remains
-        # authoritative because JSON Object Mode does not enforce this schema.
-        if self.model_id in {
-            "openai/gpt-oss-20b",
-            "openai/gpt-oss-120b",
-        }:
-            response_format = _ANNOTATION_RESPONSE_FORMAT
-        else:
-            response_format = {"type": "json_object"}
-
-        # Strict JSON Schema for supported GPT-OSS models.
-        if self.model_id in {
-            "openai/gpt-oss-20b",
-            "openai/gpt-oss-120b",
-        }:
-            annotation_response_format = _ANNOTATION_RESPONSE_FORMAT
-        else:
-            annotation_response_format = {"type": "json_object"}
+        # Strict JSON Schema is used only for the supported GPT-OSS models;
+        # other configured models retain JSON Object Mode and downstream validation.
+        annotation_response_format = (
+            _ANNOTATION_RESPONSE_FORMAT
+            if self.model_id in _STRICT_JSON_SCHEMA_MODELS
+            else {"type": "json_object"}
+        )
 
         payload = self._request_json(
             system_prompt=_ANNOTATION_SYSTEM_PROMPT,
