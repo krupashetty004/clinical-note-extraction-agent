@@ -86,16 +86,17 @@ def make_case_pair():
 
 
 class EvaluationMetricsTests(SimpleTestCase):
+    def setUp(self):
+        # The report tests only need an empty queue to prove clinical gold is
+        # unavailable. Use a temporary synthetic fixture instead of any local
+        # source dataset that is intentionally excluded from version control.
+        self._temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self._temporary_directory.cleanup)
+        self._queue_file = Path(self._temporary_directory.name) / "synthetic_empty_queue.jsonl"
+        self._queue_file.write_text("", encoding="utf-8")
+
     def _queue_path(self) -> Path:
-        return (
-            Path(__file__).resolve().parents[1]
-            / "mirai_dataset_preparation_pack"
-            / "data"
-            / "external"
-            / "mtsamples"
-            / "annotations"
-            / "annotation_template_100.jsonl"
-        )
+        return self._queue_file
 
     def test_ai_benchmark_is_reported_separately_from_clinical_gold(self):
         note = "Assessment: diabetes."
