@@ -8,7 +8,7 @@
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
         <div>
             <h1 class="h3 mb-1">Local annotation queue</h1>
-            <p class="text-muted mb-0">100-note queue across multiple specialties with provenance preserved.</p>
+            <p class="text-muted mb-0">{{ progress.prepared }}-note queue across multiple specialties with provenance preserved.</p>
         </div>
         <div class="btn-group" role="group" aria-label="Annotation actions">
             <a class="btn btn-primary" href="{% url 'dashboard:annotation_export' %}">Validate & export</a>
