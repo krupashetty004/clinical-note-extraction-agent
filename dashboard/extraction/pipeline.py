@@ -21,6 +21,26 @@ class ExtractionProviderError(RuntimeError):
         self.code = code
 
 
+# Preserve only stable provider categories defined by our adapter. Provider
+# exception text and arbitrary third-party error codes are never surfaced.
+_SAFE_PROVIDER_FAILURE_CODES = frozenset({
+    "provider_timeout",
+    "provider_failed",
+    "provider_bad_request",
+    "provider_authentication_failed",
+    "provider_permission_denied",
+    "provider_resource_not_found",
+    "provider_request_too_large",
+    "provider_rate_limited",
+    "provider_server_error",
+    "provider_connection_error",
+    "provider_response_shape_invalid",
+    "provider_empty_response",
+    "provider_invalid_json",
+    "provider_invalid_json_shape",
+})
+
+
 def run_extraction(
     provider: ExtractionProvider,
     original_note: str,
@@ -44,13 +64,16 @@ def run_extraction(
         # Do not include provider exception details because they could
         # contain note text, credentials, or other sensitive values.
         provider_code = getattr(exc, "code", "provider_failed")
-        if provider_code == "provider_timeout":
-            raise ExtractionProviderError(
-                "The extraction provider timed out.",
-                code="provider_timeout",
-            ) from exc
+        if provider_code not in _SAFE_PROVIDER_FAILURE_CODES:
+            provider_code = "provider_failed"
+        message = (
+            "The extraction provider timed out."
+            if provider_code == "provider_timeout"
+            else "The extraction provider failed."
+        )
         raise ExtractionProviderError(
-            "The extraction provider failed."
+            message,
+            code=provider_code,
         ) from exc
 
     # Schema and evidence errors remain distinguishable from provider
