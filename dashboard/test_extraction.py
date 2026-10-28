@@ -560,6 +560,35 @@ class ExtractionPipelineTests(SimpleTestCase):
         self.assertEqual(context.exception.code, "provider_timeout")
         self.assertNotIn("synthetic timeout details", str(context.exception))
 
+    def test_safe_provider_failure_code_is_preserved(self):
+        class SyntheticRateLimitError(RuntimeError):
+            code = "provider_rate_limited"
+
+        provider = self.SyntheticProvider(
+            error=SyntheticRateLimitError("synthetic private provider details")
+        )
+
+        with self.assertRaises(ExtractionProviderError) as context:
+            run_extraction(provider, self.note)
+
+        self.assertEqual(context.exception.code, "provider_rate_limited")
+        self.assertNotIn("synthetic private provider details", str(context.exception))
+
+    def test_unrecognized_provider_failure_code_is_sanitized(self):
+        class SyntheticCodedError(RuntimeError):
+            code = "private-untrusted-code"
+
+        provider = self.SyntheticProvider(
+            error=SyntheticCodedError("synthetic private provider details")
+        )
+
+        with self.assertRaises(ExtractionProviderError) as context:
+            run_extraction(provider, self.note)
+
+        self.assertEqual(context.exception.code, "provider_failed")
+        self.assertNotIn("private-untrusted-code", str(context.exception))
+        self.assertNotIn("synthetic private provider details", str(context.exception))
+
     def test_non_string_note_is_rejected_before_provider_call(self):
         provider = self.SyntheticProvider(
             payload=self.valid_payload
