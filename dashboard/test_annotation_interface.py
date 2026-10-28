@@ -23,28 +23,86 @@ class LocalAnnotationInterfaceTests(TestCase):
         self.client.force_login(self.doctor)
         self.client.session.clear()
         self.client.session.save()
-        working_path = Path(__file__).resolve().parents[1] / ".annotation_working_queue.jsonl"
-        if working_path.exists():
-            working_path.unlink()
 
-    def test_annotation_queue_renders_100_note_queue(self):
+        # Tests use synthetic-only queue data and never depend on the locally
+        # downloaded MTSamples dataset or modify a user's working annotation file.
+        self._temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self._temporary_directory.cleanup)
+        temporary_root = Path(self._temporary_directory.name)
+        self.template_path = temporary_root / "annotation_template.jsonl"
+        self.working_path = temporary_root / ".annotation_working_queue.jsonl"
+
+        synthetic_records = [
+            {
+                "record_id": "synthetic-annotation-001",
+                "specialty": "Synthetic Surgery",
+                "note_text": (
+                    "Synthetic demo record: the phrase left foot is included "
+                    "only to test evidence offsets."
+                ),
+                "source_dataset": "synthetic:mirai-test",
+                "source_url": "https://example.invalid/mirai-synthetic-dataset",
+                "source_row_number": 1,
+                "source_keywords": "synthetic; left foot",
+                "annotation_complete": False,
+                "adjudication_status": "not_reviewed",
+                "conflict_status": "not_reviewed",
+                "conflict_notes": "",
+                "gold_annotations": None,
+            },
+            {
+                "record_id": "synthetic-annotation-002",
+                "specialty": "Synthetic Internal Medicine",
+                "note_text": (
+                    "Synthetic assessment example for testing the annotation queue."
+                ),
+                "source_dataset": "synthetic:mirai-test",
+                "source_url": "https://example.invalid/mirai-synthetic-dataset",
+                "source_row_number": 2,
+                "source_keywords": "synthetic; assessment",
+                "annotation_complete": False,
+                "adjudication_status": "not_reviewed",
+                "conflict_status": "not_reviewed",
+                "conflict_notes": "",
+                "gold_annotations": None,
+            },
+        ]
+        self.template_path.write_text(
+            "".join(json.dumps(record) + "\\n" for record in synthetic_records),
+            encoding="utf-8",
+        )
+
+        patchers = (
+            patch("dashboard.views._annotation_template_path", return_value=self.template_path),
+            patch("dashboard.views._annotation_working_path", return_value=self.working_path),
+            patch("dashboard.views.ANNOTATION_VALIDATOR.SOURCE_ID", "synthetic:mirai-test"),
+            patch(
+                "dashboard.views.ANNOTATION_VALIDATOR.SOURCE_URL",
+                "https://example.invalid/mirai-synthetic-dataset",
+            ),
+        )
+        for patcher in patchers:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_annotation_queue_renders_synthetic_note_queue(self):
         response = self.client.get(reverse("dashboard:annotation_queue"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Local annotation queue")
-        self.assertContains(response, "100-note queue")
-        self.assertContains(response, "mtsamples-00176-9fefeb9804915464")
-        self.assertContains(response, "Surgery")
-        self.assertContains(response, "mtsamples-03094-ab40536e8afb16bc")
+        self.assertContains(response, "2-note queue")
+        self.assertContains(response, "synthetic-annotation-001")
+        self.assertContains(response, "Synthetic Surgery")
+        self.assertContains(response, "synthetic-annotation-002")
 
-    def test_annotation_queue_uses_original_template_records(self):
+    def test_annotation_queue_uses_original_synthetic_template_records(self):
         response = self.client.get(reverse("dashboard:annotation_queue"))
         queue = response.context["queue"]
-        self.assertEqual(len(queue), 100)
-        self.assertEqual(queue[0]["record_id"], "mtsamples-00176-9fefeb9804915464")
-        self.assertEqual(queue[0]["source_dataset"], "kaggle:tboyle10/medicaltranscriptions")
-        self.assertTrue(queue[0]["note_text"].startswith("PREOPERATIVE DIAGNOSES:"))
-        self.assertEqual(queue[-1]["record_id"], "mtsamples-03094-ab40536e8afb16bc")
-        self.assertEqual(queue[-1]["specialty"], "IME-QME-Work Comp etc.")
+        self.assertEqual(len(queue), 2)
+        self.assertEqual(queue[0]["record_id"], "synthetic-annotation-001")
+        self.assertEqual(queue[0]["source_dataset"], "synthetic:mirai-test")
+        self.assertTrue(queue[0]["note_text"].startswith("Synthetic demo record:"))
+        self.assertEqual(queue[-1]["record_id"], "synthetic-annotation-002")
+        self.assertEqual(queue[-1]["specialty"], "Synthetic Internal Medicine")
 
     def test_annotation_detail_saves_and_persists_draft(self):
         queue = self.client.get(reverse("dashboard:annotation_queue")).context["queue"]
