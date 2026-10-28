@@ -68,7 +68,7 @@ class LocalAnnotationInterfaceTests(TestCase):
             },
         ]
         self.template_path.write_text(
-            "".join(json.dumps(record) + "\\n" for record in synthetic_records),
+            "".join(json.dumps(record) + "\n" for record in synthetic_records),
             encoding="utf-8",
         )
 
