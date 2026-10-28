@@ -420,6 +420,78 @@ class GroqExtractionProvider(_GroqJSONProvider):
         return payload
 
 
+def _normalize_verification_payload(
+    payload: dict[str, Any],
+    original_note: str,
+) -> dict[str, Any]:
+    """Resolve unambiguous evidence offsets and enforce conservative review flags.
+
+    Model-generated offsets are corrected only when evidence text occurs exactly
+    once in the source. Ambiguous or absent evidence is left unchanged for the
+    downstream validator to reject. Review flags may be strengthened, never
+    weakened, when findings or reasons require review.
+    """
+    def resolve_reference(reference: object) -> None:
+        if not isinstance(reference, dict):
+            return
+        evidence_text = reference.get("evidence_text")
+        if not isinstance(evidence_text, str) or not evidence_text:
+            return
+        start = original_note.find(evidence_text)
+        if start < 0 or original_note.find(evidence_text, start + 1) >= 0:
+            return
+        reference["start_offset"] = start
+        reference["end_offset"] = start + len(evidence_text)
+
+    checks = payload.get("item_checks")
+    if isinstance(checks, list):
+        for check in checks:
+            if isinstance(check, dict) and isinstance(check.get("evidence"), list):
+                for reference in check["evidence"]:
+                    resolve_reference(reference)
+
+    omissions = payload.get("potential_omissions")
+    if isinstance(omissions, list):
+        for omission in omissions:
+            if isinstance(omission, dict):
+                resolve_reference(omission.get("evidence"))
+
+    reasons = payload.get("review_reasons")
+    needs_review = payload.get("needs_review")
+    if (
+        not isinstance(checks, list)
+        or not isinstance(omissions, list)
+        or not isinstance(reasons, list)
+        or not all(isinstance(reason, str) for reason in reasons)
+        or not isinstance(needs_review, bool)
+    ):
+        return payload
+
+    unresolved = False
+    for check in checks:
+        if not isinstance(check, dict):
+            unresolved = True
+            continue
+        if (
+            check.get("outcome") != "supported"
+            or check.get("status_check") in {"incorrect", "uncertain"}
+        ):
+            unresolved = True
+
+    normalized_reasons = [reason.strip() for reason in reasons if reason.strip()]
+    review_required = (
+        needs_review or unresolved or bool(omissions) or bool(normalized_reasons)
+    )
+    if review_required and not normalized_reasons:
+        normalized_reasons = [
+            "Verification findings require human review."
+        ]
+
+    payload["needs_review"] = review_required
+    payload["review_reasons"] = normalized_reasons
+    return payload
+
+
 class GroqVerificationProvider(_GroqJSONProvider):
     """Return independent verification JSON for the existing validator."""
 
@@ -440,7 +512,7 @@ class GroqVerificationProvider(_GroqJSONProvider):
             if self.model_id in _STRICT_JSON_SCHEMA_MODELS
             else {"type": "json_object"}
         )
-        return self._request_json(
+        payload = self._request_json(
             system_prompt=_VERIFICATION_SYSTEM_PROMPT,
             user_payload={
                 "original_note": original_note,
@@ -449,6 +521,7 @@ class GroqVerificationProvider(_GroqJSONProvider):
             },
             response_format=response_format,
         )
+        return _normalize_verification_payload(payload, original_note)
 
 
 class GroqAnnotationProvider(_GroqJSONProvider):
