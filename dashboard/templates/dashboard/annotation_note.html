@@ -133,6 +133,43 @@
                         {{ form.source_keywords }}
                     </div>
 
+                    <!-- Quick Entity Span Builder -->
+                    <div class="card border mb-3 bg-light">
+                        <div class="card-header bg-white py-2">
+                            <strong class="small text-uppercase text-secondary">Quick Entity Span Builder</strong>
+                        </div>
+                        <div class="card-body py-2">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-md-4">
+                                    <label class="form-label small mb-1">Entity / Text</label>
+                                    <input type="text" id="quickEntityText" class="form-control form-control-sm" placeholder="Select text from note or type...">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small mb-1">Category</label>
+                                    <select id="quickCategorySelect" class="form-select form-select-sm">
+                                        <option value="diagnoses">Diagnosis</option>
+                                        <option value="medications">Medication</option>
+                                        <option value="procedures">Procedure</option>
+                                        <option value="allergies">Allergy</option>
+                                        <option value="vital_signs">Vital Sign</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3" id="quickStatusCol">
+                                    <label class="form-label small mb-1">Status</label>
+                                    <select id="quickStatusSelect" class="form-select form-select-sm">
+                                        <option value="active">Active</option>
+                                        <option value="historical">Historical</option>
+                                        <option value="ruled_out">Ruled out</option>
+                                        <option value="suspected">Suspected</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <button type="button" id="quickAddBtn" class="btn btn-primary btn-sm w-100">+ Add</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="accordion" id="annotationAccordion">
                         <div class="accordion-item">
                             <h2 class="accordion-header" id="headingDiagnoses">
@@ -227,4 +264,86 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const catSelect = document.getElementById("quickCategorySelect");
+    const statusCol = document.getElementById("quickStatusCol");
+    const statusSelect = document.getElementById("quickStatusSelect");
+    const entityInput = document.getElementById("quickEntityText");
+    const addBtn = document.getElementById("quickAddBtn");
+    const noteTextarea = document.getElementById("{{ form.note_text.id_for_label }}");
+
+    if (catSelect && statusCol && statusSelect) {
+        catSelect.addEventListener("change", function() {
+            const val = this.value;
+            statusSelect.innerHTML = "";
+            if (val === "diagnoses") {
+                statusCol.style.display = "";
+                statusSelect.innerHTML = `
+                    <option value="active">Active</option>
+                    <option value="historical">Historical</option>
+                    <option value="ruled_out">Ruled out</option>
+                    <option value="suspected">Suspected</option>
+                `;
+            } else if (val === "medications") {
+                statusCol.style.display = "";
+                statusSelect.innerHTML = `
+                    <option value="current">Current</option>
+                    <option value="discontinued">Discontinued</option>
+                    <option value="newly_prescribed">Newly prescribed</option>
+                `;
+            } else {
+                statusCol.style.display = "none";
+            }
+        });
+    }
+
+    // Auto-detect text selection from anywhere on the note view
+    document.addEventListener("selectionchange", function() {
+        const sel = window.getSelection().toString().trim();
+        if (sel && sel.length > 0 && sel.length < 150 && document.activeElement !== entityInput) {
+            if (entityInput) {
+                entityInput.value = sel;
+            }
+        }
+    });
+
+    if (addBtn) {
+        addBtn.addEventListener("click", function() {
+            const text = entityInput.value.trim();
+            if (!text) return;
+            const category = catSelect.value;
+            const fullNote = noteTextarea ? noteTextarea.value : "";
+            const idx = fullNote.indexOf(text);
+            const start = idx >= 0 ? idx : 0;
+            const end = idx >= 0 ? idx + text.length : text.length;
+
+            const targetField = document.getElementById("id_" + category);
+            if (!targetField) return;
+
+            let existing = [];
+            try {
+                existing = JSON.parse(targetField.value || "[]");
+            } catch(e) {
+                existing = [];
+            }
+
+            const newItem = {
+                "entity": text,
+                "evidence_text": text,
+                "start_offset": start,
+                "end_offset": end
+            };
+            if (category === "diagnoses" || category === "medications") {
+                newItem["status"] = statusSelect.value;
+            }
+
+            existing.push(newItem);
+            targetField.value = JSON.stringify(existing, null, 2);
+            entityInput.value = "";
+        });
+    }
+});
+</script>
 {% endblock %}

@@ -316,3 +316,141 @@ class LocalAnnotationInterfaceTests(TestCase):
         self.assertEqual(response["Content-Type"], "application/jsonl; charset=utf-8")
         content = response.content.decode("utf-8")
         self.assertIn(f'"record_id": "{note_id}"', content)
+
+    def test_dropdown_options_present_on_different_records(self):
+        """Dropdown options are present on annotation pages for different records."""
+        sample_ids = [
+            "mtsamples-01488-56a93dbe88bfa068",
+            "mtsamples-00176-9fefeb9804915464",
+            "mtsamples-03094-ab40536e8afb16bc",
+        ]
+        for record_id in sample_ids:
+            response = self.client.get(
+                reverse("dashboard:annotation_detail", kwargs={"record_id": record_id})
+            )
+            self.assertEqual(response.status_code, 200)
+            content = response.content.decode("utf-8")
+            self.assertIn('name="adjudication_status"', content)
+            self.assertIn('name="conflict_status"', content)
+            self.assertIn('name="reviewer_decision"', content)
+            # Check option values are rendered
+            self.assertIn('value="not_required"', content)
+            self.assertIn('value="adjudicated"', content)
+            self.assertIn('value="needs_rework"', content)
+            self.assertIn('value="not_reviewed"', content)
+            self.assertIn('value="not_applicable"', content)
+            self.assertIn('value="resolved"', content)
+            self.assertIn('value="pending"', content)
+            self.assertIn('value="accepted"', content)
+            self.assertIn('value="rejected"', content)
+
+    def test_intended_dropdowns_have_expected_choices(self):
+        """Each intended dropdown has its expected choices and displays saved initial value."""
+        response = self.client.get(
+            reverse("dashboard:annotation_detail", kwargs={"record_id": "mtsamples-01488-56a93dbe88bfa068"})
+        )
+        self.assertEqual(response.status_code, 200)
+        form = response.context["form"]
+        # Expected choices
+        self.assertEqual(
+            [c[0] for c in form.fields["adjudication_status"].choices],
+            ["not_required", "adjudicated", "needs_rework"],
+        )
+        self.assertEqual(
+            [c[0] for c in form.fields["conflict_status"].choices],
+            ["not_reviewed", "not_applicable", "resolved"],
+        )
+        self.assertEqual(
+            [c[0] for c in form.fields["reviewer_decision"].choices],
+            ["pending", "accepted", "rejected"],
+        )
+        # Check initial values match template gold record
+        self.assertEqual(form.initial["adjudication_status"], "adjudicated")
+        self.assertEqual(form.initial["conflict_status"], "not_applicable")
+        self.assertEqual(form.initial["reviewer_decision"], "accepted")
+
+    def test_valid_dropdown_selection_submits_and_persists_after_reload(self):
+        """A valid selection can be submitted and persists after reload."""
+        record_id = "mtsamples-01488-56a93dbe88bfa068"
+        get_resp = self.client.get(
+            reverse("dashboard:annotation_detail", kwargs={"record_id": record_id})
+        )
+        record = get_resp.context["record"]
+        payload = {
+            "record_id": record_id,
+            "specialty": record["specialty"],
+            "note_text": record["note_text"],
+            "source_dataset": record["source_dataset"],
+            "source_url": record["source_url"],
+            "source_row_number": record["source_row_number"],
+            "source_keywords": record.get("source_keywords", ""),
+            "diagnoses": json.dumps(record["gold_annotations"]["diagnoses"]),
+            "procedures": json.dumps(record["gold_annotations"]["procedures"]),
+            "medications": json.dumps(record["gold_annotations"]["medications"]),
+            "allergies": json.dumps(record["gold_annotations"]["allergies"]),
+            "vital_signs": json.dumps(record["gold_annotations"]["vital_signs"]),
+            "icd10_cm_codes": json.dumps(record["gold_annotations"]["icd10_cm_codes"]),
+            "annotator_id": "annotator-persistence-test",
+            "annotation_complete": "on",
+            "adjudication_status": "needs_rework",
+            "conflict_status": "resolved",
+            "conflict_notes": "Resolved conflict notes.",
+            "reviewer_decision": "rejected",
+            "reviewer_comment": "Needs rework.",
+            "action": "save",
+        }
+        post_resp = self.client.post(
+            reverse("dashboard:annotation_detail", kwargs={"record_id": record_id}),
+            payload,
+            follow=True,
+        )
+        self.assertEqual(post_resp.status_code, 200)
+        # Verify persistence in session and rendered form
+        reloaded_form = post_resp.context["form"]
+        self.assertEqual(reloaded_form.initial["adjudication_status"], "needs_rework")
+        self.assertEqual(reloaded_form.initial["conflict_status"], "resolved")
+        self.assertEqual(reloaded_form.initial["reviewer_decision"], "rejected")
+
+        # Verify rendered HTML select elements have selected attributes
+        content = post_resp.content.decode("utf-8")
+        self.assertIn('<option value="needs_rework" selected>Needs rework</option>', content)
+        self.assertIn('<option value="resolved" selected>Resolved</option>', content)
+        self.assertIn('<option value="rejected" selected>Rejected</option>', content)
+
+    def test_invalid_dropdown_selection_is_rejected(self):
+        """Invalid dropdown selections are rejected with validation errors."""
+        record_id = "mtsamples-01488-56a93dbe88bfa068"
+        get_resp = self.client.get(
+            reverse("dashboard:annotation_detail", kwargs={"record_id": record_id})
+        )
+        record = get_resp.context["record"]
+        payload = {
+            "record_id": record_id,
+            "specialty": record["specialty"],
+            "note_text": record["note_text"],
+            "source_dataset": record["source_dataset"],
+            "source_url": record["source_url"],
+            "source_row_number": record["source_row_number"],
+            "source_keywords": record.get("source_keywords", ""),
+            "diagnoses": "[]",
+            "procedures": "[]",
+            "medications": "[]",
+            "allergies": "[]",
+            "vital_signs": "[]",
+            "icd10_cm_codes": "[]",
+            "annotator_id": "annotator-invalid-test",
+            "adjudication_status": "invalid_status_xyz",
+            "conflict_status": "bogus_conflict",
+            "reviewer_decision": "bad_decision",
+            "action": "save",
+        }
+        post_resp = self.client.post(
+            reverse("dashboard:annotation_detail", kwargs={"record_id": record_id}),
+            payload,
+        )
+        self.assertEqual(post_resp.status_code, 200)
+        form = post_resp.context["form"]
+        self.assertFalse(form.is_valid())
+        self.assertIn("adjudication_status", form.errors)
+        self.assertIn("conflict_status", form.errors)
+        self.assertIn("reviewer_decision", form.errors)

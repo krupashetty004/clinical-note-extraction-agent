@@ -384,7 +384,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(json.dumps({
             "output": str(args.output),
-            "clinical_status": report["clinical_metrics"]["status"],
+            "clinical_status": report["clinical_metrics"].get("status", "MEASURED"),
             "prepared_notes": report["queue_progress"]["prepared_notes"],
             "qualified_notes": report["queue_progress"]["qualified_notes"],
             "challenge_status": report["challenge_sets"].get("overall_status"),

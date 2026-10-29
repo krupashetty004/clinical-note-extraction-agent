@@ -139,4 +139,21 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     filterInput.addEventListener("input", filterRows);
+
+    // Fallback for accordion/collapse elements if Bootstrap JS is unavailable offline
+    document.querySelectorAll("[data-bs-toggle='collapse']").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            if (window.bootstrap && window.bootstrap.Collapse) {
+                return;
+            }
+            const targetSelector = btn.getAttribute("data-bs-target");
+            const target = targetSelector ? document.querySelector(targetSelector) : null;
+            if (target) {
+                const isOpen = target.classList.contains("show");
+                target.classList.toggle("show", !isOpen);
+                btn.classList.toggle("collapsed", isOpen);
+                btn.setAttribute("aria-expanded", String(!isOpen));
+            }
+        });
+    });
 });

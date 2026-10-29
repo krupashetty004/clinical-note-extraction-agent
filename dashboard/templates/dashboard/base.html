@@ -51,14 +51,7 @@
                 <span>Patients</span>
             </a>
 
-            <a
-                class="sidebar-link {% if active_nav == 'annotation' %}active{% endif %}"
-                href="{% url 'dashboard:annotation_queue' %}"
-                {% if active_nav == 'annotation' %}aria-current="page"{% endif %}
-            >
-                <span class="nav-icon" aria-hidden="true">AN</span>
-                <span>Annotation queue</span>
-            </a>
+
 
             <a
                 class="sidebar-link {% if active_nav == 'knowledge' %}active{% endif %}"
@@ -148,6 +141,7 @@
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
 <script src="{% static 'dashboard/js/dashboard.js' %}" defer></script>
 </body>
 </html>

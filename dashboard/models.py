@@ -278,6 +278,7 @@ class AIConfiguration(models.Model):
     PROVIDER_CHOICES = (
         ("synthetic", "Local synthetic test provider"),
         ("groq", "Groq"),
+        ("gemini", "Google Gemini"),
     )
 
     provider = models.CharField(max_length=32, choices=PROVIDER_CHOICES)
@@ -321,7 +322,15 @@ class AIConfiguration(models.Model):
         super().clean()
         allowed_models = {
             "synthetic": {"local-synthetic-v1"},
-            "groq": {"openai/gpt-oss-20b"},
+            "groq": {
+                "openai/gpt-oss-20b",
+                "llama-3.3-70b-versatile",
+                "llama-3.2-11b-vision-preview",
+            },
+            "gemini": {
+                "gemini-1.5-flash",
+                "gemini-2.0-flash",
+            },
         }
         if self.provider not in allowed_models:
             raise ValidationError({"provider": "Select an approved provider."})
@@ -335,6 +344,19 @@ class AIConfiguration(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         return super().save(*args, **kwargs)
+
+    def get_api_key(self) -> str:
+        """Decrypt and return the stored plaintext API key."""
+        if not self.api_key_encrypted:
+            return ""
+        from cryptography.fernet import Fernet
+        key = base64.urlsafe_b64encode(
+            hashlib.sha256(settings.SECRET_KEY.encode("utf-8")).digest()
+        )
+        try:
+            return Fernet(key).decrypt(self.api_key_encrypted.encode("ascii")).decode("utf-8")
+        except Exception:
+            return ""
 
     def set_api_key(self, value: str) -> None:
         value = value.strip()
@@ -375,6 +397,7 @@ class ClinicalProcessingRun(models.Model):
     class ExecutionMode(models.TextChoices):
         UNKNOWN = "unknown", "Unknown / legacy"
         SYNTHETIC_DEMO = "synthetic_demo", "Synthetic demonstration"
+        AI_AGENT = "ai_agent", "AI Extraction Agent"
 
     class ReviewDecision(models.TextChoices):
         PENDING = "pending", "Pending human review"

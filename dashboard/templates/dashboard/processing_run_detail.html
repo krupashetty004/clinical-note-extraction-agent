@@ -14,15 +14,27 @@
         </p>
     </div>
 
-    <a
-        class="btn btn-outline-secondary btn-sm"
-        href="{% url 'dashboard:patient_detail' patient_id=patient.pk %}"
-    >
-        Back to patient record
-    </a>
+    <div class="d-flex gap-2 align-items-center">
+        <a
+            class="btn btn-outline-primary btn-sm"
+            href="{% url 'dashboard:export_processing_run' run_id=run.pk %}"
+        >
+            Export reviewed JSON
+        </a>
+        <a
+            class="btn btn-outline-secondary btn-sm"
+            href="{% url 'dashboard:patient_detail' patient_id=patient.pk %}"
+        >
+            Back to patient record
+        </a>
+    </div>
 </section>
 
-{% if run.execution_mode == "synthetic_demo" %}
+{% if run.execution_mode == "ai_agent" %}
+<div class="alert alert-success" role="alert">
+    <strong>AI Clinical Extraction Agent.</strong> Entities extracted directly from source note evidence, coded against canonical ICD-10-CM reference, and verified through independent multi-stage checks.
+</div>
+{% elif run.execution_mode == "synthetic_demo" %}
 <div class="alert alert-warning" role="alert">
     <strong>Synthetic demonstration only.</strong> No AI model was called,
     no clinical findings were extracted, and no independent clinical
@@ -92,7 +104,7 @@
     {% endif %}
 </section>
 
-{% if run.review_decision == "pending" %}
+{% if run.status == "needs_review" and run.review_decision == "pending" %}
 <section class="panel">
     <h2>Human review</h2>
     <p>

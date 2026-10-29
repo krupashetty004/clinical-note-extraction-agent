@@ -1,0 +1,68 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}New encounter — {{ patient.display_name }} | Mirai Clinical{% endblock %}
+{% block breadcrumb_label %}New encounter{% endblock %}
+
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">ENCOUNTER SETUP</p>
+        <h1>New encounter</h1>
+        <p class="page-description">
+            Patient: <strong>{{ patient.identifier }}</strong> — {{ patient.display_name }}
+        </p>
+    </div>
+</section>
+
+<section class="panel note-entry-panel">
+    <form method="post" class="note-entry-form">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">
+                {{ form.non_field_errors }}
+            </div>
+        {% endif %}
+
+        <div class="mb-3">
+            <label class="form-label" for="{{ form.title.id_for_label }}">
+                Encounter Title / Purpose
+            </label>
+            {{ form.title }}
+            {% for error in form.title.errors %}
+                <div class="text-danger mt-1 small">{{ error }}</div>
+            {% endfor %}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="{{ form.encounter_date.id_for_label }}">
+                Encounter Date & Time
+            </label>
+            {{ form.encounter_date }}
+            {% for error in form.encounter_date.errors %}
+                <div class="text-danger mt-1 small">{{ error }}</div>
+            {% endfor %}
+            <p class="note-field-help">{{ form.encounter_date.help_text }}</p>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="{{ form.status.id_for_label }}">
+                Encounter Status
+            </label>
+            {{ form.status }}
+            {% for error in form.status.errors %}
+                <div class="text-danger mt-1 small">{{ error }}</div>
+            {% endfor %}
+        </div>
+
+        <div class="note-form-actions">
+            <button class="btn btn-primary" type="submit">
+                Start encounter
+            </button>
+            <a class="btn btn-outline-secondary" href="{% url 'dashboard:patient_detail' patient_id=patient.pk %}">
+                Cancel
+            </a>
+        </div>
+    </form>
+</section>
+{% endblock %}

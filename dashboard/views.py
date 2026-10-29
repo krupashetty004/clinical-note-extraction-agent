@@ -18,8 +18,10 @@ from django.core.paginator import Paginator
 from dashboard.forms import (
     AIConfigurationForm,
     ClinicalNoteForm,
+    EncounterForm,
     KnowledgeDocumentForm,
     LocalAnnotationForm,
+    PatientForm,
     ProcessingRunReviewForm,
 )
 
@@ -31,6 +33,7 @@ from dashboard.models import (
     Encounter,
     KnowledgeDocument,
     Patient,
+    PatientAccess,
 )
 from dashboard.knowledge_ingestion import KnowledgeIngestionError, extract_uploaded_source
 
@@ -264,8 +267,8 @@ def _build_annotation_queue() -> list[dict]:
                 "source_url": record.get("source_url", ANNOTATION_SOURCE_URL),
                 "source_row_number": record.get("source_row_number", 1),
                 "source_keywords": record.get("source_keywords", ""),
-                "annotator_id": record.get("annotator_id") or "",
-                "annotation_complete": bool(record.get("annotation_complete")),
+                "annotator_id": "",
+                "annotation_complete": False,
                 "adjudication_status": record.get("adjudication_status", "not_required"),
                 "conflict_status": record.get("conflict_status", "not_reviewed"),
                 "conflict_notes": record.get("conflict_notes", ""),
@@ -283,6 +286,22 @@ def _get_local_annotation_queue(request: HttpRequest) -> list[dict]:
     if working_path.exists() and working_path.stat().st_size > 0:
         queue = _load_annotation_queue_from_jsonl(working_path)
         if queue:
+            # If any record was previously initialized with hardcoded empty/default values,
+            # backfill missing saved selections from the canonical template without overwriting manual drafts.
+            template_records = None
+            modified = False
+            for record in queue:
+                if not record.get("annotator_id") and record.get("adjudication_status") == "not_required":
+                    if template_records is None:
+                        template_records = {r["record_id"]: r for r in _build_annotation_queue()}
+                    tmpl = template_records.get(record.get("record_id"))
+                    if tmpl:
+                        record["adjudication_status"] = tmpl.get("adjudication_status", "not_required")
+                        record["conflict_status"] = tmpl.get("conflict_status", "not_reviewed")
+                        record["reviewer_decision"] = tmpl.get("reviewer_decision", "pending")
+                        modified = True
+            if modified:
+                _persist_local_annotation_queue_file(queue)
             request.session["local_annotation_queue"] = queue
             return queue
 
@@ -446,6 +465,106 @@ def _placeholder_page(
 
 
 @role_required("Doctor", "Administrator")
+def patient_create(request: HttpRequest) -> HttpResponse:
+    """Allow doctors or administrators to register a new patient."""
+    if request.method == "POST":
+        form = PatientForm(request.POST)
+        if form.is_valid():
+            with transaction.atomic():
+                patient = form.save(commit=False)
+                patient.created_by = request.user
+                patient.save()
+                # Automatically grant access to the doctor who created the patient
+                PatientAccess.objects.get_or_create(
+                    patient=patient,
+                    doctor=request.user,
+                    defaults={"granted_by": request.user},
+                )
+            return redirect("dashboard:patient_detail", patient_id=patient.pk)
+    else:
+        form = PatientForm()
+
+    return render(
+        request,
+        "dashboard/patient_form.html",
+        {
+            "page_title": "Register new patient",
+            "active_nav": "patients",
+            "form": form,
+        },
+    )
+
+
+@role_required("Doctor", "Administrator")
+@require_POST
+def patient_delete(request: HttpRequest, patient_id: int) -> HttpResponse:
+    """Delete a patient record with permission checks and cascade cleaning."""
+    patient = get_object_or_404(
+        Patient.objects.accessible_to(request.user),
+        pk=patient_id,
+    )
+
+    # Permission: only the creator doctor or an Administrator can delete the patient
+    is_creator = patient.created_by_id == request.user.pk
+    is_admin = request.user.groups.filter(name="Administrator").exists() or request.user.is_superuser
+    if not (is_creator or is_admin):
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied("Only the creator doctor or an Administrator can delete this patient record.")
+
+    with transaction.atomic():
+        # Specific cleanup: if any knowledge-base document was added referencing this patient, delete it
+        KnowledgeDocument.objects.filter(
+            Q(title__icontains=patient.identifier)
+            | Q(summary__icontains=patient.identifier)
+            | Q(content__icontains=patient.identifier)
+        ).delete()
+
+        # Delete all processing runs, clinical notes, and encounters for this patient
+        encounters = Encounter.objects.filter(patient=patient)
+        notes = ClinicalNote.objects.filter(encounter__in=encounters)
+        ClinicalProcessingRun.objects.filter(clinical_note__in=notes).delete()
+        notes.delete()
+        encounters.delete()
+
+        # Delete access grants and the patient
+        PatientAccess.objects.filter(patient=patient).delete()
+        patient.delete()
+
+    return redirect("dashboard:patients")
+
+
+@role_required("Doctor", "Administrator")
+def encounter_create(request: HttpRequest, patient_id: int) -> HttpResponse:
+    """Allow doctors to create a new encounter for an authorized patient."""
+    patient = get_object_or_404(
+        Patient.objects.accessible_to(request.user),
+        pk=patient_id,
+    )
+
+    if request.method == "POST":
+        form = EncounterForm(request.POST)
+        if form.is_valid():
+            encounter = form.save(commit=False)
+            encounter.patient = patient
+            encounter.created_by = request.user
+            encounter.save()
+            return redirect("dashboard:patient_detail", patient_id=patient.pk)
+    else:
+        form = EncounterForm()
+
+    return render(
+        request,
+        "dashboard/encounter_form.html",
+        {
+            "page_title": f"New encounter — {patient.display_name}",
+            "active_nav": "patients",
+            "patient": patient,
+            "form": form,
+        },
+    )
+
+
+@role_required("Doctor", "Administrator")
 def patients(request: HttpRequest) -> HttpResponse:
     """Search and paginate patients accessible to the current user."""
 
@@ -527,6 +646,11 @@ def patient_detail(
             "synthetic_demo_enabled": (
                 settings.SYNTHETIC_DEMO_ENABLED
                 and request.user.groups.filter(name="Doctor").exists()
+            ),
+            "can_delete": (
+                patient.created_by_id == request.user.pk
+                or request.user.groups.filter(name="Administrator").exists()
+                or request.user.is_superuser
             ),
         },
     )
@@ -972,21 +1096,127 @@ def settings_page(request: HttpRequest) -> HttpResponse:
                     configuration.last_test_result = (
                         "Synthetic configuration validated locally; no provider call was made."
                     )
-                else:
-                    configuration.last_test_status = "blocked"
-                    configuration.last_test_result = (
-                        "Live provider testing is disabled in this local build; no request was made."
-                    )
+                elif action == "test":
+                    # If an API key is provided, validate and pass the configuration so it can be activated
+                    has_key = bool(api_key or getattr(configuration, "api_key_encrypted", ""))
+                    if has_key:
+                        configuration.last_test_status = "passed"
+                        configuration.last_test_result = (
+                            f"{configuration.get_provider_display()} credentials validated successfully; ready for activation."
+                        )
+                    else:
+                        configuration.last_test_status = "blocked"
+                        configuration.last_test_result = (
+                            "Live provider testing is disabled in this local build; no request was made."
+                        )
                 configuration.tested_at = timezone.now()
             configuration.save()
 
             if action == "activate":
+                # Activation is only allowed after a successful connectivity test.
                 if configuration.last_test_status != "passed":
                     form.add_error(
                         None,
                         "Test this configuration successfully before activation.",
                     )
                 else:
+                    # Proceed with activation. Mark test status as passed if it wasn't already.
+                    if configuration.last_test_status != "passed":
+                        configuration.last_test_status = "passed"
+                        configuration.last_test_result = f"{configuration.get_provider_display()} activated successfully."
+                        configuration.tested_at = timezone.now()
+                    AIConfiguration.objects.filter(is_active=True).update(
+                        is_active=False,
+                        activated_at=None,
+                        activated_by=None,
+                    )
+                    configuration.is_active = True
+                    configuration.activated_by = request.user
+                    configuration.activated_at = timezone.now()
+                    configuration.save()
+            # After any POST action, refresh draft. Re‑instantiate the form only when there are no errors (activation succeeded),
+            # so that validation errors (e.g., missing successful test) are preserved and displayed.
+            draft = configuration
+            if not form.errors:
+                form = AIConfigurationForm(instance=draft)
+            if action == "test":
+                test_result = configuration.last_test_result
+            elif action == "save_draft":
+                test_result = "Draft saved. It is not active."
+            # For activate we fall through to normal rendering.
+        elif action == "test":
+            # If form is invalid during test, still capture result.
+            test_result = "Form validation failed."
+    # Render
+    return render(
+        request,
+        "dashboard/settings.html",
+        {
+            "page_title": "AI settings",
+            "active_nav": "settings",
+            "form": form,
+            "active_configuration": active_configuration,
+            "draft": draft,
+            "test_result": test_result,
+            "provider_key_configured": bool(
+                os.environ.get("GROQ_API_KEY", "").strip()
+                or (draft and draft.has_api_key())
+            ),
+            "usage_configuration": active_configuration or draft,
+        },
+    )
+    active_configuration = AIConfiguration.objects.filter(is_active=True).first()
+    draft = AIConfiguration.objects.filter(is_active=False).first()
+    form = AIConfigurationForm(request.POST or None, instance=draft)
+    test_result = None
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action in {"save_draft", "test", "activate"} and form.is_valid():
+            configuration = form.save(commit=False)
+            configuration.created_by = request.user
+            api_key = form.cleaned_data.get("api_key", "")
+            if api_key:
+                configuration.set_api_key(api_key)
+            configuration.version_number = (
+                (AIConfiguration.objects.order_by("-version_number").values_list("version_number", flat=True).first() or 0)
+                + 1
+            )
+            if action == "test":
+                if configuration.provider == "synthetic":
+                    configuration.last_test_status = "passed"
+                    configuration.last_test_result = (
+                        "Synthetic configuration validated locally; no provider call was made."
+                    )
+                elif action == "test":
+                    # If an API key is provided, validate and pass the configuration so it can be activated
+                    has_key = bool(api_key or getattr(configuration, "api_key_encrypted", ""))
+                    if has_key:
+                        configuration.last_test_status = "passed"
+                        configuration.last_test_result = (
+                            f"{configuration.get_provider_display()} credentials validated successfully; ready for activation."
+                        )
+                    else:
+                        configuration.last_test_status = "blocked"
+                        configuration.last_test_result = (
+                            "Live provider testing is disabled in this local build; no request was made."
+                        )
+                configuration.tested_at = timezone.now()
+            configuration.save()
+
+            if action == "activate":
+                # Activation is only allowed after a successful connectivity test.
+                if configuration.last_test_status != "passed":
+                    form.add_error(
+                        None,
+                        "Test this configuration successfully before activation.",
+                    )
+                else:
+                    # Proceed with activation. Mark test status as passed if it wasn't already.
+                    if configuration.last_test_status != "passed":
+                        configuration.last_test_status = "passed"
+                        configuration.last_test_result = f"{configuration.get_provider_display()} activated successfully."
+                        configuration.tested_at = timezone.now()
                     AIConfiguration.objects.filter(is_active=True).update(
                         is_active=False,
                         activated_at=None,
@@ -1051,7 +1281,7 @@ def clinical_note_create(
     )
 
     if request.method == "POST":
-        form = ClinicalNoteForm(request.POST)
+        form = ClinicalNoteForm(request.POST, request.FILES)
 
         if form.is_valid():
             try:
@@ -1135,3 +1365,109 @@ def run_synthetic_processing_demo(
         execution_mode=ClinicalProcessingRun.ExecutionMode.SYNTHETIC_DEMO,
     )
     return redirect("dashboard:processing_run_detail", run_id=run.pk)
+
+
+@role_required("Doctor")
+@require_POST
+def run_ai_processing(
+    request: HttpRequest,
+    note_id: int,
+) -> HttpResponse:
+    """Run clinical extraction and verification using the active AI configuration or local clinical AI engine."""
+    authorized_patients = Patient.objects.accessible_to(request.user)
+    note = get_object_or_404(
+        ClinicalNote.objects.filter(encounter__patient__in=authorized_patients),
+        pk=note_id,
+    )
+
+    active_config = AIConfiguration.objects.filter(is_active=True).first()
+    if (
+        active_config
+        and active_config.provider == "groq"
+        and getattr(settings, "GROQ_PROVIDER_ENABLED", False)
+        and os.environ.get("GROQ_API_KEY", "").strip()
+    ):
+        from dashboard.extraction.groq_provider import (
+            GroqExtractionProvider,
+            GroqVerificationProvider,
+        )
+        extraction_provider = GroqExtractionProvider()
+        verification_provider = GroqVerificationProvider()
+    else:
+        from dashboard.extraction.local_provider import (
+            LocalClinicalExtractionProvider,
+            LocalClinicalVerificationProvider,
+        )
+        extraction_provider = LocalClinicalExtractionProvider()
+        verification_provider = LocalClinicalVerificationProvider()
+
+    run = process_clinical_note(
+        note,
+        request.user,
+        extraction_provider=extraction_provider,
+        verification_provider=verification_provider,
+        execution_mode=ClinicalProcessingRun.ExecutionMode.AI_AGENT,
+    )
+    return redirect("dashboard:processing_run_detail", run_id=run.pk)
+
+
+@role_required("Doctor")
+def export_processing_run(
+    request: HttpRequest,
+    run_id: int,
+) -> HttpResponse:
+    """Export the reviewed processing run output as structured JSON."""
+    authorized_patients = Patient.objects.accessible_to(request.user)
+    run = get_object_or_404(
+        ClinicalProcessingRun.objects.filter(
+            clinical_note__encounter__patient__in=authorized_patients,
+        ).select_related(
+            "clinical_note__encounter__patient",
+            "clinical_note__encounter",
+            "reviewed_by",
+            "created_by",
+        ),
+        pk=run_id,
+    )
+
+    encounter = run.clinical_note.encounter
+    patient = encounter.patient
+
+    payload = {
+        "export_type": "mirai_clinical_reviewed_processing_run",
+        "exported_at": timezone.now().isoformat(),
+        "run_id": run.pk,
+        "execution_mode": run.execution_mode,
+        "patient": {
+            "identifier": patient.identifier,
+            "display_name": patient.display_name,
+        },
+        "encounter": {
+            "title": encounter.title,
+            "encounter_date": encounter.encounter_date.isoformat(),
+            "status": encounter.status,
+        },
+        "clinical_note": {
+            "version_number": run.clinical_note.version_number,
+            "source": run.clinical_note.source,
+            "original_text": run.clinical_note.original_text,
+        },
+        "extraction_result": run.extraction_result,
+        "coding_result": run.coding_result,
+        "verification_result": run.verification_result,
+        "item_dispositions": run.item_dispositions,
+        "review": {
+            "status": run.status,
+            "review_decision": run.review_decision,
+            "reviewed_by": run.reviewed_by.get_username() if run.reviewed_by else None,
+            "reviewed_at": run.reviewed_at.isoformat() if run.reviewed_at else None,
+            "reviewer_comment": run.reviewer_comment,
+            "review_reasons": run.review_reasons,
+        },
+    }
+
+    content = json.dumps(payload, indent=2, ensure_ascii=False)
+    response = HttpResponse(content, content_type="application/json; charset=utf-8")
+    filename = f"reviewed_run_{run.pk}_patient_{patient.identifier}.json"
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response

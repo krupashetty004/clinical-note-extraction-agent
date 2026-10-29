@@ -194,6 +194,25 @@ def qualification_errors(
         errors.append(prefix + "record requires reviewed conflict status")
     if not isinstance(record.get("conflict_notes"), str) or not record["conflict_notes"].strip():
         errors.append(prefix + "record requires conflict review notes")
+    if record.get("label_source") not in {
+        "human_annotated",
+        "external_gold_standard",
+    }:
+        errors.append(
+            prefix
+            + "record requires label_source='human_annotated' or "
+            "'external_gold_standard'; AI-generated labels are not clinical gold"
+        )
+    provenance = record.get("label_provenance")
+    if not isinstance(provenance, dict) or not all(
+        isinstance(provenance.get(field), str) and provenance[field].strip()
+        for field in ("dataset_version", "annotation_guidelines", "license_or_dua")
+    ):
+        errors.append(
+            prefix
+            + "record requires label_provenance with dataset_version, "
+            "annotation_guidelines, and license_or_dua"
+        )
     return errors
 
 

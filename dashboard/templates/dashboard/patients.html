@@ -13,10 +13,15 @@
         </p>
     </div>
 
-    <span class="demo-badge">
-        <span class="demo-dot"></span>
-        Synthetic data only
-    </span>
+    <div class="d-flex align-items-center gap-2">
+        <a class="btn btn-primary btn-sm" href="{% url 'dashboard:patient_create' %}">
+            + Register Patient
+        </a>
+        <span class="demo-badge">
+            <span class="demo-dot"></span>
+            Synthetic data only
+        </span>
+    </div>
 </section>
 
 <section class="panel patient-list-panel">

@@ -6,6 +6,11 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from dashboard.extraction.local_provider import (
+    LocalClinicalExtractionProvider,
+    LocalClinicalVerificationProvider,
+)
+from dashboard.extraction.processing_service import process_clinical_note
 from dashboard.models import (
     ClinicalNote,
     ClinicalProcessingRun,
@@ -66,6 +71,39 @@ class ProcessingRunViewTests(TestCase):
             review_reasons=["Synthetic review test."],
         )
 
+    def test_completed_local_run_does_not_show_unavailable_review_form(self):
+        note = ClinicalNote.objects.create(
+            encounter=self.encounter,
+            version_number=2,
+            original_text="No findings are documented in this synthetic note.",
+            created_by=self.doctor_a,
+        )
+
+        run = process_clinical_note(
+            note,
+            self.doctor_a,
+            extraction_provider=LocalClinicalExtractionProvider(),
+            verification_provider=LocalClinicalVerificationProvider(),
+            execution_mode=ClinicalProcessingRun.ExecutionMode.AI_AGENT,
+        )
+
+        self.assertEqual(run.status, ClinicalProcessingRun.Status.COMPLETED)
+        self.assertEqual(
+            run.review_decision,
+            ClinicalProcessingRun.ReviewDecision.PENDING,
+        )
+
+        self.client.force_login(self.doctor_a)
+        response = self.client.get(
+            reverse(
+                "dashboard:processing_run_detail",
+                kwargs={"run_id": run.pk},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Save review decision")
+
     def test_authorized_doctor_can_view_processing_run(self):
         self.client.force_login(self.doctor_a)
 
@@ -80,6 +118,7 @@ class ProcessingRunViewTests(TestCase):
         self.assertContains(response, "Processing run #")
         self.assertContains(response, "Synthetic Run View Patient")
         self.assertContains(response, "Synthetic review test.")
+        self.assertContains(response, "Save review decision")
 
 
     def test_other_doctor_cannot_view_processing_run(self):

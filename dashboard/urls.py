@@ -9,10 +9,21 @@ app_name = "dashboard"
 urlpatterns = [
     path("", views.home, name="home"),
     path("patients/", views.patients, name="patients"),
+    path("patients/new/", views.patient_create, name="patient_create"),
     path(
         "patients/<int:patient_id>/",
         views.patient_detail,
         name="patient_detail",
+    ),
+    path(
+        "patients/<int:patient_id>/delete/",
+        views.patient_delete,
+        name="patient_delete",
+    ),
+    path(
+        "patients/<int:patient_id>/encounters/new/",
+        views.encounter_create,
+        name="encounter_create",
     ),
     path(
         "knowledge-base/",
@@ -45,9 +56,19 @@ urlpatterns = [
         name="review_processing_run",
     ),
     path(
+        "notes/<int:note_id>/process/",
+        views.run_ai_processing,
+        name="run_ai_processing",
+    ),
+    path(
         "notes/<int:note_id>/run-synthetic-demo/",
         views.run_synthetic_processing_demo,
         name="run_synthetic_processing_demo",
+    ),
+    path(
+        "processing-runs/<int:run_id>/export/",
+        views.export_processing_run,
+        name="export_processing_run",
     ),
     path(
         "annotation/",

@@ -44,7 +44,7 @@
         version. Use synthetic text during development.
     </div>
 
-    <form method="post" class="note-entry-form">
+    <form method="post" enctype="multipart/form-data" class="note-entry-form">
         {% csrf_token %}
 
         {% if form.non_field_errors %}
@@ -53,12 +53,33 @@
             </div>
         {% endif %}
 
+        <div class="mb-4 p-3 border rounded bg-light">
+            <label
+                class="form-label fw-bold"
+                for="{{ form.source_file.id_for_label }}"
+            >
+                Upload Multimodal Source (PDF / Image OCR / Audio Dictation / Text)
+            </label>
+
+            {{ form.source_file }}
+
+            {% for error in form.source_file.errors %}
+                <div class="text-danger mt-1 small">
+                    {{ error }}
+                </div>
+            {% endfor %}
+
+            <p class="note-field-help mt-1">
+                Supported formats: <strong>.pdf</strong>, <strong>.png</strong>, <strong>.jpg</strong>, <strong>.wav</strong>, <strong>.mp3</strong>, <strong>.m4a</strong>, <strong>.ogg</strong>, <strong>.txt</strong>, <strong>.md</strong>. Text will be automatically extracted/transcribed.
+            </p>
+        </div>
+
         <div class="mb-3">
             <label
-                class="form-label"
+                class="form-label fw-bold"
                 for="{{ form.original_text.id_for_label }}"
             >
-                Original note text
+                Or Enter / Edit Note Text Directly
             </label>
 
             {{ form.original_text }}
@@ -70,7 +91,7 @@
             {% endfor %}
 
             <p class="note-field-help">
-                The submitted text is preserved as the original source
+                The submitted text is preserved as the immutable evidence source
                 for future extraction and evidence-offset validation.
             </p>
         </div>

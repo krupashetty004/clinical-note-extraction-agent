@@ -1,0 +1,65 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}Register patient | Mirai Clinical{% endblock %}
+{% block breadcrumb_label %}Register patient{% endblock %}
+
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">PATIENT REGISTRATION</p>
+        <h1>Register new patient</h1>
+        <p class="page-description">
+            Create a patient record in the workspace. You will automatically receive access.
+        </p>
+    </div>
+</section>
+
+<div class="alert alert-warning" role="alert">
+    <strong>Synthetic data only.</strong>
+    This demonstration is not approved for real clinical use.
+    Do not enter real patient names or protected health information (PHI).
+</div>
+
+<section class="panel note-entry-panel">
+    <form method="post" class="note-entry-form">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">
+                {{ form.non_field_errors }}
+            </div>
+        {% endif %}
+
+        <div class="mb-3">
+            <label class="form-label" for="{{ form.identifier.id_for_label }}">
+                Patient Identifier / Chart ID
+            </label>
+            {{ form.identifier }}
+            {% for error in form.identifier.errors %}
+                <div class="text-danger mt-1 small">{{ error }}</div>
+            {% endfor %}
+            <p class="note-field-help">{{ form.identifier.help_text }}</p>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="{{ form.display_name.id_for_label }}">
+                Display Name (Synthetic)
+            </label>
+            {{ form.display_name }}
+            {% for error in form.display_name.errors %}
+                <div class="text-danger mt-1 small">{{ error }}</div>
+            {% endfor %}
+            <p class="note-field-help">{{ form.display_name.help_text }}</p>
+        </div>
+
+        <div class="note-form-actions">
+            <button class="btn btn-primary" type="submit">
+                Register patient
+            </button>
+            <a class="btn btn-outline-secondary" href="{% url 'dashboard:patients' %}">
+                Cancel
+            </a>
+        </div>
+    </form>
+</section>
+{% endblock %}

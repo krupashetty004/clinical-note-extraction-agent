@@ -201,6 +201,21 @@ AI_ANNOTATION_FIELDS = (
     "icd10_cm_codes",
 )
 
+GOLD_LABEL_SOURCES = {"human_annotated", "external_gold_standard"}
+
+
+def _has_gold_label_provenance(metadata: dict[str, Any]) -> bool:
+    """Require non-AI labels and auditable source provenance for gold metrics."""
+    provenance = metadata.get("label_provenance")
+    return (
+        metadata.get("label_source") in GOLD_LABEL_SOURCES
+        and isinstance(provenance, dict)
+        and all(
+            isinstance(provenance.get(field), str) and provenance[field].strip()
+            for field in ("dataset_version", "annotation_guidelines", "license_or_dua")
+        )
+    )
+
 
 def _is_complete_ai_benchmark_record(metadata: dict[str, Any]) -> bool:
     """Require an explicitly completed, structurally complete AI annotation.
@@ -240,7 +255,10 @@ def annotation_readiness(result: DatasetLoadResult) -> dict[str, Any]:
     eligible = [
         record
         for record in complete
-        if record.metadata.get("clinical_performance_eligible") is True
+        if (
+            record.metadata.get("clinical_performance_eligible") is True
+            and _has_gold_label_provenance(record.metadata)
+        )
     ]
     ai_benchmark_records = [
         record

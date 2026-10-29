@@ -1,0 +1,2414 @@
+﻿
+===== .\dashboard\extraction\schema.py =====
+"""Strict schemas and original-note evidence validation."""
+
+import re
+from typing import Annotated, Literal
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    StrictStr,
+    model_validator,
+)
+
+
+EntityCategory = Literal[
+    "diagnosis",
+    "medication",
+    "procedure",
+    "allergy",
+    "vital_sign",
+]
+
+DiagnosisStatus = Literal[
+    "active",
+    "historical",
+    "ruled_out",
+    "suspected",
+]
+
+MedicationStatus = Literal[
+    "current",
+    "discontinued",
+    "newly_prescribed",
+]
+
+MentionStatus = DiagnosisStatus | MedicationStatus
+
+
+class ExtractedItem(BaseModel):
+    """One clinical mention with evidence in the original source note."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    category: EntityCategory
+    entity: StrictStr = Field(min_length=1)
+
+    # Diagnoses and medications have their own status vocabularies.
+    # Procedures, allergies, and vital signs have no status field
+    # under the current SOW contract.
+    status: MentionStatus | None = None
+
+    evidence_text: StrictStr = Field(min_length=1)
+
+    # Zero-based, end-exclusive offsets into the original Python string.
+    start_offset: Annotated[StrictInt, Field(ge=0)]
+    end_offset: Annotated[StrictInt, Field(gt=0)]
+
+    # Values explicitly stated in the source, such as medication dose,
+    # route/frequency, procedure date, allergy reaction, or vital/unit.
+    attributes: dict[str, StrictStr] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_item_fields(self) -> "ExtractedItem":
+        """Enforce status rules according to the entity category."""
+
+        if not self.entity.strip():
+            raise ValueError(
+                "Entity must not be empty or whitespace-only."
+            )
+
+        if not self.evidence_text.strip():
+            raise ValueError(
+                "Evidence text must not be empty or whitespace-only."
+            )
+
+        if self.end_offset <= self.start_offset:
+            raise ValueError(
+                "end_offset must be greater than start_offset."
+            )
+
+        if self.category == "diagnosis":
+            if self.status not in {
+                "active",
+                "historical",
+                "ruled_out",
+                "suspected",
+            }:
+                raise ValueError(
+                    "Diagnosis status must be active, historical, "
+                    "ruled_out, or suspected."
+                )
+
+        elif self.category == "medication":
+            if self.status not in {
+                "current",
+                "discontinued",
+                "newly_prescribed",
+            }:
+                raise ValueError(
+                    "Medication status must be current, "
+                    "discontinued, or newly_prescribed."
+                )
+
+        elif self.status is not None:
+            raise ValueError(
+                "Status is not defined for this entity category "
+                "in the current extraction contract."
+            )
+
+        return self
+
+
+class ExtractionResult(BaseModel):
+    """Structured result returned by the extraction component."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ExtractedItem]
+    needs_review: bool
+    review_reasons: list[StrictStr]
+
+
+class EvidenceSpanValidationError(ValueError):
+    """Typed evidence-span failure, without exposing source text."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+_WORD_PATTERN = re.compile(r"[^\W_]+", re.UNICODE)
+_NEGATION_CUES = (
+    "no ",
+    "no evidence of",
+    "denies ",
+    "denied ",
+    "without ",
+    "negative for",
+    "not ",
+    "never ",
+    "ruled out",
+    "has not been diagnosed",
+)
+_HISTORICAL_CUES = (
+    "history of",
+    "historical",
+    "previously",
+    "formerly",
+    "in the past",
+    "remote ",
+)
+_UNCERTAINTY_CUES = (
+    "possible ",
+    "possibly ",
+    "suspected ",
+    "likely ",
+    "may have",
+    "might have",
+    "question of",
+    "concern for",
+)
+_CURRENT_CUES = (
+    "current ",
+    "currently ",
+    "active ",
+    "present ",
+)
+_DISCONTINUED_CUES = (
+    "discontinued",
+    "stopped",
+    "held",
+    "no longer taking",
+)
+_NEW_MEDICATION_CUES = (
+    "new prescription",
+    "newly prescribed",
+    "prescribed",
+    "started",
+    "begin ",
+    "began ",
+)
+
+
+def _normalized_tokens(value: str) -> set[str]:
+    return set(_WORD_PATTERN.findall(value.casefold()))
+
+
+def entity_evidence_is_grounded(entity: str, evidence_text: str) -> bool:
+    """Return whether every entity token occurs in cited evidence."""
+    entity_tokens = _normalized_tokens(entity)
+    evidence_tokens = _normalized_tokens(evidence_text)
+    return bool(entity_tokens) and entity_tokens <= evidence_tokens
+
+
+def _context_for_span(note: str, start: int, end: int) -> str:
+    """Return the sentence or line containing a source span."""
+    left_boundary = max(
+        note.rfind(".", 0, start),
+        note.rfind("!", 0, start),
+        note.rfind("?", 0, start),
+        note.rfind(";", 0, start),
+        note.rfind("\n", 0, start),
+    )
+    right_candidates = [
+        position
+        for position in (
+            note.find(".", end),
+            note.find("!", end),
+            note.find("?", end),
+            note.find(";", end),
+            note.find("\n", end),
+        )
+        if position >= 0
+    ]
+    right_boundary = min(right_candidates, default=len(note))
+    return note[left_boundary + 1:right_boundary + 1].casefold()
+
+
+def _contains_cue(context: str, cues: tuple[str, ...]) -> bool:
+    return any(cue in context for cue in cues)
+
+
+def _validate_item_grounding(
+    item: ExtractedItem,
+    original_note: str,
+) -> None:
+    """Reject fabricated entities, attributes, or status context."""
+    if not entity_evidence_is_grounded(
+        item.entity,
+        item.evidence_text,
+    ):
+        raise EvidenceSpanValidationError(
+            "evidence_entity_mismatch",
+            "The evidence does not contain the extracted entity.",
+        )
+
+    for attribute_name, attribute_value in item.attributes.items():
+        if not attribute_name.strip() or not attribute_value.strip():
+            raise EvidenceSpanValidationError(
+                "evidence_attribute_invalid",
+                "Evidence attributes must have non-blank names and values.",
+            )
+        if attribute_value.casefold() not in item.evidence_text.casefold():
+            raise EvidenceSpanValidationError(
+                "evidence_attribute_mismatch",
+                "An extracted attribute is not present in the evidence.",
+            )
+
+def validate_item_status_context(
+    item: ExtractedItem,
+    original_note: str,
+) -> str | None:
+    """Return a status-context error without rejecting extraction output.
+
+    Status reconciliation belongs to the independent verifier. Extraction
+    must retain a source-grounded mention even when its predicted status is
+    wrong, so the verifier can flag it for review.
+    """
+    context = _context_for_span(
+        original_note,
+        item.start_offset,
+        item.end_offset,
+    )
+    if item.category == "diagnosis":
+        if item.status == "active" and (
+            _contains_cue(context, _NEGATION_CUES)
+            or _contains_cue(context, _HISTORICAL_CUES)
+            or _contains_cue(context, _UNCERTAINTY_CUES)
+        ):
+            return (
+                "Active diagnosis evidence conflicts with its source context."
+            )
+        if item.status == "historical":
+            if _contains_cue(context, _CURRENT_CUES):
+                return (
+                    "Historical diagnosis status conflicts with current "
+                    "source context."
+                )
+            if not _contains_cue(context, _HISTORICAL_CUES):
+                return (
+                    "Historical diagnosis status lacks historical source "
+                    "context."
+                )
+        if item.status == "suspected" and not _contains_cue(
+            context, _UNCERTAINTY_CUES
+        ):
+            return (
+                "Suspected diagnosis status lacks uncertainty source context."
+            )
+        if item.status == "ruled_out" and not _contains_cue(
+            context, _NEGATION_CUES
+        ):
+            return (
+                "Ruled-out diagnosis status lacks negating source context."
+            )
+    elif item.category == "medication":
+        if item.status == "current" and (
+            _contains_cue(context, _DISCONTINUED_CUES)
+            or _contains_cue(context, _HISTORICAL_CUES)
+            or _contains_cue(context, _UNCERTAINTY_CUES)
+        ):
+            return "Current medication status conflicts with source context."
+        if item.status == "discontinued" and not _contains_cue(
+            context, _DISCONTINUED_CUES
+        ):
+            return "Discontinued medication status lacks source context."
+        if item.status == "newly_prescribed" and not _contains_cue(
+            context, _NEW_MEDICATION_CUES
+        ):
+            return "New medication status lacks prescription source context."
+    return None
+
+
+def validate_evidence_spans(
+    result: ExtractionResult,
+    original_note: str,
+) -> None:
+    """Validate exact evidence text and offsets against the original note.
+
+    Raises:
+        TypeError: If original_note is not a string.
+        ValueError: If evidence is outside the note or differs from
+            the original substring.
+
+    An exact substring match does not prove semantic support.
+    """
+    if not isinstance(original_note, str):
+        raise TypeError("original_note must be a string.")
+
+    for index, item in enumerate(result.items):
+        if item.end_offset > len(original_note):
+            raise EvidenceSpanValidationError(
+                "evidence_offset_out_of_bounds",
+                f"Item {index}: end_offset exceeds the original note length.",
+            )
+
+        actual_evidence = original_note[
+            item.start_offset:item.end_offset
+        ]
+
+        if actual_evidence != item.evidence_text:
+            raise EvidenceSpanValidationError(
+                "evidence_text_offset_mismatch",
+                f"Item {index}: evidence_text does not match "
+                "the original note at the supplied offsets.",
+            )
+
+        _validate_item_grounding(item, original_note)
+
+
+===== .\dashboard\extraction\local_provider.py =====
+"""Local clinical extraction and verification providers for the doctor workspace.
+
+Provides offline, grounded clinical entity extraction and independent verification
+when an external AI API is not active or configured.
+"""
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from dashboard.extraction.diagnosis_coding import DiagnosisCodingBatch
+from dashboard.extraction.schema import ExtractionResult
+
+TOKEN_PATTERN = re.compile(r"[^\W_]+", re.UNICODE)
+
+
+def _tokens(text: str) -> set[str]:
+    return {token.casefold() for token in TOKEN_PATTERN.findall(text)}
+
+
+# Dictionary of known clinical entity terms
+CLINICAL_TERMS: dict[str, list[str]] = {
+    "diagnoses": [
+        "type 2 diabetes mellitus", "diabetes mellitus", "type 1 diabetes mellitus",
+        "essential hypertension", "hypertension", "hyperlipidemia", "hypercholesterolemia",
+        "coronary artery disease", "atrial fibrillation", "congestive heart failure", "heart failure",
+        "myocardial infarction", "angina pectoris", "chest pain", "shortness of breath", "dyspnea",
+        "asthma", "chronic obstructive pulmonary disease", "copd", "pneumonia", "bronchitis",
+        "hallux rigidus", "bunion", "degenerative joint disease", "osteoarthritis", "rheumatoid arthritis",
+        "carpal tunnel syndrome", "scoliosis", "lumbar radiculopathy", "herniated disc",
+        "gastroesophageal reflux disease", "gerd", "gastritis", "peptic ulcer disease",
+        "diverticulitis", "appendicitis", "cholecystitis", "cholelithiasis", "pancreatitis",
+        "chronic kidney disease", "acute kidney injury", "urinary tract infection", "hematuria",
+        "benign prostatic hyperplasia", "nephrolithiasis", "kidney stones",
+        "migraine", "headache", "epilepsy", "seizure disorder", "stroke", "cerebrovascular accident",
+        "transient ischemic attack", "multiple sclerosis", "parkinson's disease", "neuropathy",
+        "major depressive disorder", "depression", "generalized anxiety disorder", "anxiety",
+        "bipolar disorder", "schizophrenia", "insomnia", "sleep apnea",
+        "allergic rhinitis", "sinusitis", "otitis media", "pharyngitis", "tonsillitis",
+        "cellulitis", "dermatitis", "eczema", "psoriasis", "melanoma", "basal cell carcinoma",
+        "squamous cell carcinoma", "breast cancer", "prostate cancer", "lung cancer", "colon cancer",
+        "anemia", "iron deficiency anemia", "thrombocytopenia", "leukocytosis", "deep vein thrombosis",
+        "pulmonary embolism", "obesity", "morbid obesity", "hypothyroidism", "hyperthyroidism",
+        "gout", "osteoporosis", "osteopenia", "cataract", "glaucoma", "macular degeneration",
+        "fever", "cough", "fatigue", "nausea", "vomiting", "diarrhea", "constipation",
+        "abdominal pain", "back pain", "neck pain", "joint pain", "swelling", "edema"
+    ],
+    "medications": [
+        "lisinopril", "metformin", "atorvastatin", "amlodipine", "metoprolol", "omeprazole",
+        "losartan", "simvastatin", "gabapentin", "hydrochlorothiazide", "hydrocodone",
+        "sertraline", "furosemide", "levothyroxine", "amoxicillin", "pantoprazole",
+        "escitalopram", "prednisone", "rosuvastatin", "tamsulosin", "dextroamphetamine",
+        "ibuprofen", "acetaminophen", "aspirin", "insulin", "warfarin", "clopidogrel",
+        "ciprofloxacin", "azithromycin", "doxycycline", "cephalexin", "tramadol",
+        "duloxetine", "albuterol", "fluticasone", "montelukast", "vicodin", "marcaine",
+        "lidocaine", "propofol", "fentanyl", "morphine", "zofran", "ondansetron",
+        "heparin", "lovenox", "enoxaparin", "apixaban", "eliquis", "rivaroxaban", "xarelto"
+    ],
+    "procedures": [
+        "bunionectomy", "osteotomy", "screw fixation", "implant", "arthroplasty",
+        "colonoscopy", "endoscopy", "biopsy", "resection", "excision", "incision",
+        "ultrasound", "echocardiogram", "electrocardiogram", "ecg", "ekg", "x-ray",
+        "ct scan", "mri", "intubation", "catheterization", "laparoscopy", "thoracotomy",
+        "cholecystectomy", "appendectomy", "mastectomy", "lumpectomy", "hysterectomy",
+        "prostatectomy", "nephrectomy", "craniotomy", "drainage", "irrigation",
+        "debridement", "repair", "suture", "graft", "angioplasty", "stent", "coronary artery bypass"
+    ],
+    "allergies": [
+        "penicillin", "amoxicillin", "sulfa", "sulfonamides", "latex", "codeine",
+        "morphine", "aspirin", "nsaids", "iodine", "peanuts", "shellfish", "eggs", "tape"
+    ],
+    "vital_signs": [
+        "blood pressure", "heart rate", "pulse", "respiratory rate", "temperature",
+        "oxygen saturation", "o2 sat", "height", "weight", "bmi", "vital signs"
+    ],
+}
+
+
+class LocalClinicalExtractionProvider:
+    """Extract clinical entities strictly grounded in the original source note."""
+
+    def extract(self, input_text: str) -> dict[str, Any]:
+        if not isinstance(input_text, str):
+            raise TypeError("input_text must be a string.")
+
+        text_lower = input_text.lower()
+        items: list[dict[str, Any]] = []
+        occupied_spans: list[tuple[int, int]] = []
+
+        def overlaps(s: int, e: int) -> bool:
+            return any(max(s, os) < min(e, oe) for os, oe in occupied_spans)
+
+        category_map = {
+            "diagnoses": "diagnosis",
+            "medications": "medication",
+            "procedures": "procedure",
+            "allergies": "allergy",
+            "vital_signs": "vital_sign",
+        }
+
+        for group_key, terms in CLINICAL_TERMS.items():
+            category = category_map[group_key]
+            for term in sorted(terms, key=len, reverse=True):
+                cursor = 0
+                while True:
+                    idx = text_lower.find(term, cursor)
+                    if idx == -1:
+                        break
+                    end = idx + len(term)
+                    cursor = end
+
+                    prev_char = text_lower[idx - 1] if idx > 0 else " "
+                    next_char = text_lower[end] if end < len(text_lower) else " "
+                    if prev_char.isalnum() or next_char.isalnum():
+                        continue
+
+                    if overlaps(idx, end):
+                        continue
+
+                    evidence = input_text[idx:end]
+                    status = None
+                    if category == "diagnosis":
+                        window = text_lower[max(0, idx - 40):idx]
+                        if any(w in window for w in ["history of", "hx of", "past history", "prior"]):
+                            status = "historical"
+                        elif any(w in window for w in ["no evidence of", "ruled out", "negative for", "denies"]):
+                            status = "ruled_out"
+                        elif any(w in window for w in ["possible", "probable", "rule out", "suspected", "question of"]):
+                            status = "suspected"
+                        else:
+                            status = "active"
+
+                    elif category == "medication":
+                        window = text_lower[max(0, idx - 40):idx]
+                        if any(w in window for w in ["discontinued", "stopped", "off", "d/c"]):
+                            status = "discontinued"
+                        elif any(w in window for w in ["started on", "prescribed", "begin", "newly"]):
+                            status = "newly_prescribed"
+                        else:
+                            status = "current"
+
+                    items.append({
+                        "category": category,
+                        "entity": evidence,
+                        "evidence_text": evidence,
+                        "start_offset": idx,
+                        "end_offset": end,
+                        "status": status,
+                        "attributes": {},
+                    })
+                    occupied_spans.append((idx, end))
+
+        # Sort by start offset
+        items.sort(key=lambda x: x["start_offset"])
+
+        return {
+            "items": items,
+            "needs_review": False,
+            "review_reasons": [],
+        }
+
+
+class LocalClinicalVerificationProvider:
+    """Verify evidence integrity, offsets, contradictions, and status.
+
+    Returns a payload conforming to the VerificationResult schema expected
+    by the orchestrator's validate_verification_output() contract:
+    each item_check must include item_index, outcome, status_check, reason,
+    and evidence fields.
+    """
+
+    # Categories that carry a status field in the extraction contract.
+    _STATUS_CATEGORIES = {"diagnosis", "medication"}
+
+    def verify(
+        self,
+        original_note: str,
+        extraction: ExtractionResult,
+        coding: DiagnosisCodingBatch,
+    ) -> dict[str, Any]:
+        if not isinstance(original_note, str):
+            raise TypeError("original_note must be a string.")
+
+        item_checks: list[dict[str, Any]] = []
+        needs_review = False
+        review_reasons: list[str] = []
+
+        for index, item in enumerate(extraction.items):
+            start = item.start_offset
+            end = item.end_offset
+            evidence = item.evidence_text
+            status_applies = item.category in self._STATUS_CATEGORIES
+
+            # Check offset and evidence validity
+            if (
+                start < 0
+                or end > len(original_note)
+                or end <= start
+                or original_note[start:end] != evidence
+            ):
+                item_checks.append({
+                    "item_index": index,
+                    "outcome": "unsupported",
+                    "status_check": "correct" if status_applies else "not_applicable",
+                    "reason": "Evidence text does not match original note at specified character offsets.",
+                    "evidence": [],
+                })
+                needs_review = True
+                review_reasons.append(f"Item #{index} offset mismatch.")
+                continue
+
+            # Check grounding of entity tokens in evidence
+            if not _tokens(item.entity).issubset(_tokens(evidence)):
+                item_checks.append({
+                    "item_index": index,
+                    "outcome": "unsupported",
+                    "status_check": "correct" if status_applies else "not_applicable",
+                    "reason": "Entity is not grounded in the quoted evidence text.",
+                    "evidence": [],
+                })
+                needs_review = True
+                review_reasons.append(f"Item #{index} entity ungrounded in evidence.")
+                continue
+
+            # Build evidence reference for supported items
+            evidence_ref = {
+                "evidence_text": evidence,
+                "start_offset": start,
+                "end_offset": end,
+            }
+
+            # Determine status_check for diagnoses and medications
+            if status_applies:
+                status_check = "correct"
+                # Check for contextual contradictions in a short window before the span
+                window = original_note[max(0, start - 60): start].lower()
+                if item.category == "diagnosis":
+                    if item.status == "active" and any(
+                        w in window
+                        for w in ["no evidence of", "ruled out", "negative for", "denies", "not"]
+                    ):
+                        status_check = "uncertain"
+                        review_reasons.append(f"Item #{index} active status may conflict with negation context.")
+                    elif item.status == "historical" and any(
+                        w in window for w in ["history of", "hx of", "past", "prior"]
+                    ):
+                        status_check = "correct"
+                    elif item.status == "ruled_out" and not any(
+                        w in window
+                        for w in ["no evidence of", "ruled out", "negative for", "denies", "not"]
+                    ):
+                        status_check = "uncertain"
+                    elif item.status == "suspected" and not any(
+                        w in window
+                        for w in ["possible", "probable", "suspected", "question of", "rule out"]
+                    ):
+                        status_check = "uncertain"
+                elif item.category == "medication":
+                    if item.status == "discontinued" and not any(
+                        w in window for w in ["discontinued", "stopped", "off", "d/c"]
+                    ):
+                        status_check = "uncertain"
+            else:
+                status_check = "not_applicable"
+
+            item_checks.append({
+                "item_index": index,
+                "outcome": "supported",
+                "status_check": status_check,
+                "reason": "Evidence directly supports the extracted entity in the original note.",
+                "evidence": [evidence_ref],
+            })
+
+            if status_check in {"incorrect", "uncertain"}:
+                needs_review = True
+
+        if needs_review and not review_reasons:
+            review_reasons.append("One or more items require clinical review.")
+
+        return {
+            "item_checks": item_checks,
+            "potential_omissions": [],
+            "needs_review": needs_review,
+            "review_reasons": review_reasons,
+        }
+
+
+===== .\dashboard\extraction\verification.py =====
+"""Validation contract for independent clinical extraction verification.
+
+This module validates a verifier's structured output. It does not call an
+AI provider or determine clinical truth on its own.
+"""
+
+from typing import Annotated, Literal
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictInt,
+    StrictStr,
+    ValidationError,
+    model_validator,
+)
+
+from dashboard.extraction.schema import (
+    EntityCategory,
+    ExtractionResult,
+    entity_evidence_is_grounded,
+    validate_item_status_context,
+    validate_evidence_spans,
+)
+
+
+VerificationOutcome = Literal[
+    "supported",
+    "unsupported",
+    "contradicted",
+    "uncertain",
+]
+
+StatusCheck = Literal[
+    "correct",
+    "incorrect",
+    "uncertain",
+    "not_applicable",
+]
+
+
+class EvidenceReference(BaseModel):
+    """A quoted source span used by the verifier."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    evidence_text: StrictStr = Field(min_length=1)
+    start_offset: Annotated[StrictInt, Field(ge=0)]
+    end_offset: Annotated[StrictInt, Field(gt=0)]
+
+    @model_validator(mode="after")
+    def validate_span(self) -> "EvidenceReference":
+        if not self.evidence_text.strip():
+            raise ValueError("Evidence text must not be blank.")
+
+        if self.end_offset <= self.start_offset:
+            raise ValueError(
+                "end_offset must be greater than start_offset."
+            )
+
+        return self
+
+
+class ItemVerification(BaseModel):
+    """Verification findings for one extracted item."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    item_index: Annotated[StrictInt, Field(ge=0)]
+    outcome: VerificationOutcome
+    status_check: StatusCheck
+    reason: StrictStr = Field(min_length=1)
+    evidence: tuple[EvidenceReference, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_reason(self) -> "ItemVerification":
+        if not self.reason.strip():
+            raise ValueError("Verification reason must not be blank.")
+
+        return self
+
+
+class PotentialOmission(BaseModel):
+    """A possible clinical mention missing from the extraction."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    category: EntityCategory
+    entity: StrictStr = Field(min_length=1)
+    evidence: EvidenceReference
+    reason: StrictStr = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_text(self) -> "PotentialOmission":
+        if not self.entity.strip():
+            raise ValueError("Omission entity must not be blank.")
+
+        if not self.reason.strip():
+            raise ValueError("Omission reason must not be blank.")
+
+        return self
+
+
+class VerificationResult(BaseModel):
+    """Structured response expected from a future verification pass."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    item_checks: tuple[ItemVerification, ...] = ()
+    potential_omissions: tuple[PotentialOmission, ...] = ()
+    needs_review: StrictBool
+    review_reasons: tuple[StrictStr, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_review_decision(self) -> "VerificationResult":
+        """Prevent flagged findings from being silently accepted."""
+
+        if any(not reason.strip() for reason in self.review_reasons):
+            raise ValueError("Review reasons must not be blank.")
+
+        unresolved_item = any(
+            check.outcome != "supported"
+            or check.status_check in {"incorrect", "uncertain"}
+            for check in self.item_checks
+        )
+
+        review_required = (
+            unresolved_item or bool(self.potential_omissions)
+        )
+
+        if self.needs_review and not self.review_reasons:
+            raise ValueError(
+                "A result needing review must include review reasons."
+            )
+
+        if not self.needs_review and (
+            review_required or self.review_reasons
+        ):
+            raise ValueError(
+                "Unresolved findings must be marked for human review."
+            )
+
+        return self
+
+
+class VerificationOutputError(ValueError):
+    """Raised when a verifier response fails contract validation."""
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        detail_code: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.detail_code = detail_code
+
+
+def validate_verification_output(
+    payload: object,
+    extraction: ExtractionResult,
+    original_note: str,
+) -> VerificationResult:
+    """Validate verifier output against an extraction and its source note.
+
+    Checks:
+    - The original extraction's evidence spans are valid.
+    - Every extracted item is checked exactly once.
+    - Status checks match the entity category.
+    - Evidence references match the exact original-note substring.
+    - Unresolved findings cannot be marked as requiring no review.
+
+    This validates structure and source references, not semantic correctness.
+    """
+    if not isinstance(original_note, str):
+        raise TypeError("original_note must be a string.")
+
+    if not isinstance(extraction, ExtractionResult):
+        raise TypeError("extraction must be an ExtractionResult.")
+
+    try:
+        validate_evidence_spans(extraction, original_note)
+    except (ValueError, TypeError) as exc:
+        raise VerificationOutputError(
+            "input_extraction_invalid",
+            "The input extraction has invalid source evidence.",
+        ) from exc
+
+    try:
+        result = VerificationResult.model_validate(payload)
+    except ValidationError as exc:
+        raise VerificationOutputError(
+            "verification_schema_failed",
+            "Verification output failed schema validation.",
+        ) from exc
+
+    # Every extracted item must be checked exactly once.
+    indices = [check.item_index for check in result.item_checks]
+    expected_indices = set(range(len(extraction.items)))
+
+    if (
+        len(indices) != len(set(indices))
+        or set(indices) != expected_indices
+    ):
+        raise VerificationOutputError(
+            "verification_coverage_failed",
+            "Verification must check every extracted item exactly once.",
+        )
+
+    # Only diagnoses and medications have status fields in the contract.
+    status_categories = {"diagnosis", "medication"}
+
+    for check in result.item_checks:
+        item = extraction.items[check.item_index]
+        status_applies = item.category in status_categories
+
+        if status_applies and check.status_check == "not_applicable":
+            raise VerificationOutputError(
+                "verification_status_check_invalid",
+                "Diagnosis and medication status must be checked.",
+            )
+
+        if not status_applies and check.status_check != "not_applicable":
+            raise VerificationOutputError(
+                "verification_status_check_invalid",
+                "Status checks are not applicable to this category.",
+            )
+
+        status_context_error = validate_item_status_context(
+            item,
+            original_note,
+        )
+        if status_context_error is not None and check.status_check == "correct":
+            raise VerificationOutputError(
+                "verification_status_check_invalid",
+                "Verification marked a source status conflict as correct.",
+                detail_code="status_context_mismatch",
+            )
+
+        if (
+            check.outcome in {"supported", "contradicted"}
+            and not check.evidence
+        ):
+            raise VerificationOutputError(
+                "verification_evidence_failed",
+                "Supported or contradicted findings require evidence.",
+                detail_code="required_evidence_missing",
+            )
+        if check.evidence and not entity_evidence_is_grounded(
+            item.entity,
+            " ".join(
+                reference.evidence_text
+                for reference in check.evidence
+            ),
+        ):
+            raise VerificationOutputError(
+                "verification_evidence_failed",
+                "Verification evidence does not support the extracted entity.",
+                detail_code="evidence_entity_mismatch",
+            )
+
+    references = [
+        reference
+        for check in result.item_checks
+        for reference in check.evidence
+    ]
+    references.extend(
+        omission.evidence
+        for omission in result.potential_omissions
+    )
+
+    for reference in references:
+        if reference.end_offset > len(original_note):
+            raise VerificationOutputError(
+                "verification_evidence_failed",
+                "A verification evidence span exceeds the original note.",
+                detail_code="evidence_offset_out_of_bounds",
+            )
+
+        actual_text = original_note[
+            reference.start_offset:reference.end_offset
+        ]
+
+        if actual_text != reference.evidence_text:
+            raise VerificationOutputError(
+                "verification_evidence_failed",
+                "A verification evidence span does not match the original note.",
+                detail_code="evidence_text_offset_mismatch",
+            )
+
+    for omission in result.potential_omissions:
+        if not entity_evidence_is_grounded(
+            omission.entity,
+            omission.evidence.evidence_text,
+        ):
+            raise VerificationOutputError(
+                "verification_evidence_failed",
+                "Omission evidence does not support the omitted entity.",
+                detail_code="evidence_entity_mismatch",
+            )
+
+    return result
+
+
+__all__ = [
+    "EvidenceReference",
+    "ItemVerification",
+    "PotentialOmission",
+    "VerificationOutputError",
+    "VerificationResult",
+    "validate_verification_output",
+]
+
+===== .\dashboard\test_local_provider.py =====
+"""Tests for LocalClinicalExtractionProvider and LocalClinicalVerificationProvider."""
+
+from unittest import TestCase as PureTestCase
+
+from dashboard.extraction.local_provider import (
+    LocalClinicalExtractionProvider,
+    LocalClinicalVerificationProvider,
+)
+from dashboard.extraction.schema import ExtractionResult, ExtractedItem
+from dashboard.extraction.diagnosis_coding import DiagnosisCodingBatch
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _make_valid_item(note: str, term: str, category: str, status: str) -> ExtractedItem:
+    """Build an ExtractedItem with exact offsets grounded in note."""
+    idx = note.lower().find(term.lower())
+    if idx == -1:
+        raise ValueError(f"{term!r} not found in note.")
+    end = idx + len(term)
+    return ExtractedItem(
+        category=category,
+        entity=note[idx:end],
+        evidence_text=note[idx:end],
+        start_offset=idx,
+        end_offset=end,
+        status=status,
+        attributes={},
+    )
+
+
+def _make_extraction_result(items: list[ExtractedItem]) -> ExtractionResult:
+    """Wrap a list of ExtractedItem objects into an ExtractionResult."""
+    return ExtractionResult(items=items, needs_review=False, review_reasons=[])
+
+
+def _make_invalid_extraction(items_data: list[dict]) -> ExtractionResult:
+    """Build an ExtractionResult bypassing Pydantic validation (for failure tests)."""
+    parsed_items = [
+        ExtractedItem.model_construct(**item) for item in items_data
+    ]
+    return ExtractionResult.model_construct(
+        items=parsed_items, needs_review=False, review_reasons=[]
+    )
+
+
+def _empty_coding() -> DiagnosisCodingBatch:
+    return DiagnosisCodingBatch()
+
+
+# ---------------------------------------------------------------------------
+# LocalClinicalExtractionProvider
+# ---------------------------------------------------------------------------
+
+class TestLocalClinicalExtractionProvider(PureTestCase):
+    """Unit tests for LocalClinicalExtractionProvider.extract()."""
+
+    def setUp(self):
+        self.provider = LocalClinicalExtractionProvider()
+
+    # --- type safety ---
+
+    def test_raises_type_error_for_none(self):
+        with self.assertRaises(TypeError):
+            self.provider.extract(None)
+
+    def test_raises_type_error_for_bytes(self):
+        with self.assertRaises(TypeError):
+            self.provider.extract(b"some bytes")
+
+    def test_raises_type_error_for_int(self):
+        with self.assertRaises(TypeError):
+            self.provider.extract(12345)
+
+    # --- empty note ---
+
+    def test_empty_string_returns_no_items(self):
+        result = self.provider.extract("")
+        self.assertEqual(result["items"], [])
+
+    def test_empty_string_needs_review_is_false(self):
+        result = self.provider.extract("")
+        self.assertFalse(result["needs_review"])
+
+    # --- diagnosis extraction ---
+
+    def test_extracts_hypertension(self):
+        note = "Patient has essential hypertension, well controlled."
+        result = self.provider.extract(note)
+        entities = [i["entity"].lower() for i in result["items"]]
+        self.assertTrue(any("hypertension" in e for e in entities))
+
+    def test_extracts_type_2_diabetes_mellitus(self):
+        note = "Diagnosis: type 2 diabetes mellitus with peripheral neuropathy."
+        result = self.provider.extract(note)
+        entities = [i["entity"].lower() for i in result["items"]]
+        self.assertTrue(any("diabetes" in e for e in entities))
+
+    def test_extracts_asthma(self):
+        note = "Known history of asthma since childhood."
+        result = self.provider.extract(note)
+        entities = [i["entity"].lower() for i in result["items"]]
+        self.assertTrue(any("asthma" in e for e in entities))
+
+    def test_diagnosis_active_status_when_no_context(self):
+        note = "Patient has hypertension."
+        result = self.provider.extract(note)
+        diag = next(
+            (i for i in result["items"] if "hypertension" in i["entity"].lower()),
+            None,
+        )
+        self.assertIsNotNone(diag)
+        self.assertEqual(diag["status"], "active")
+
+    def test_diagnosis_historical_status(self):
+        note = "History of hypertension before the current visit."
+        result = self.provider.extract(note)
+        diag = next(
+            (i for i in result["items"] if "hypertension" in i["entity"].lower()),
+            None,
+        )
+        self.assertIsNotNone(diag)
+        self.assertEqual(diag["status"], "historical")
+
+    def test_diagnosis_ruled_out_status(self):
+        note = "No evidence of pneumonia was found on chest X-ray."
+        result = self.provider.extract(note)
+        diag = next(
+            (i for i in result["items"] if "pneumonia" in i["entity"].lower()),
+            None,
+        )
+        self.assertIsNotNone(diag)
+        self.assertEqual(diag["status"], "ruled_out")
+
+    def test_diagnosis_suspected_status(self):
+        note = "Possible hypertension; pending further workup."
+        result = self.provider.extract(note)
+        diag = next(
+            (i for i in result["items"] if "hypertension" in i["entity"].lower()),
+            None,
+        )
+        self.assertIsNotNone(diag)
+        self.assertEqual(diag["status"], "suspected")
+
+    # --- medication extraction ---
+
+    def test_extracts_metformin(self):
+        note = "Patient is on metformin 500mg twice daily for diabetes control."
+        result = self.provider.extract(note)
+        entities = [i["entity"].lower() for i in result["items"]]
+        self.assertTrue(any("metformin" in e for e in entities))
+
+    def test_extracts_lisinopril(self):
+        note = "Continue lisinopril 10mg daily for blood pressure management."
+        result = self.provider.extract(note)
+        entities = [i["entity"].lower() for i in result["items"]]
+        self.assertTrue(any("lisinopril" in e for e in entities))
+
+    def test_medication_current_status_by_default(self):
+        note = "Patient takes lisinopril for blood pressure."
+        result = self.provider.extract(note)
+        med = next(
+            (i for i in result["items"] if "lisinopril" in i["entity"].lower()),
+            None,
+        )
+        self.assertIsNotNone(med)
+        self.assertEqual(med["status"], "current")
+
+    def test_medication_discontinued_status(self):
+        note = "Discontinued metformin due to GI intolerance."
+        result = self.provider.extract(note)
+        med = next(
+            (i for i in result["items"] if "metformin" in i["entity"].lower()),
+            None,
+        )
+        self.assertIsNotNone(med)
+        self.assertEqual(med["status"], "discontinued")
+
+    # --- offsets ---
+
+    def test_offsets_match_evidence_in_note(self):
+        note = "Patient has hypertension noted on exam."
+        result = self.provider.extract(note)
+        for item in result["items"]:
+            start = item["start_offset"]
+            end = item["end_offset"]
+            self.assertEqual(
+                note[start:end],
+                item["evidence_text"],
+                f"Offset mismatch for entity '{item['entity']}': "
+                f"note[{start}:{end}]={note[start:end]!r} != {item['evidence_text']!r}",
+            )
+
+    def test_no_overlapping_spans(self):
+        note = "Type 2 diabetes mellitus with hypertension and hyperlipidemia."
+        result = self.provider.extract(note)
+        spans = [(i["start_offset"], i["end_offset"]) for i in result["items"]]
+        for idx_a, (s_a, e_a) in enumerate(spans):
+            for idx_b, (s_b, e_b) in enumerate(spans):
+                if idx_a >= idx_b:
+                    continue
+                overlap = max(s_a, s_b) < min(e_a, e_b)
+                self.assertFalse(
+                    overlap,
+                    f"Overlapping spans: [{s_a}:{e_a}] and [{s_b}:{e_b}]",
+                )
+
+    def test_items_sorted_by_start_offset(self):
+        note = (
+            "Patient has hypertension, type 2 diabetes mellitus, "
+            "and takes metformin and lisinopril daily."
+        )
+        result = self.provider.extract(note)
+        offsets = [i["start_offset"] for i in result["items"]]
+        self.assertEqual(offsets, sorted(offsets))
+
+    # --- result schema keys ---
+
+    def test_result_has_items_key(self):
+        result = self.provider.extract("Patient has asthma.")
+        self.assertIn("items", result)
+
+    def test_result_has_needs_review_key(self):
+        result = self.provider.extract("Patient has asthma.")
+        self.assertIn("needs_review", result)
+
+    def test_needs_review_is_bool(self):
+        result = self.provider.extract("Patient has asthma.")
+        self.assertIsInstance(result["needs_review"], bool)
+
+    def test_each_item_has_required_keys(self):
+        result = self.provider.extract("Patient has asthma and takes albuterol.")
+        for item in result["items"]:
+            for key in ("category", "entity", "evidence_text", "start_offset", "end_offset"):
+                self.assertIn(key, item, f"Missing key '{key}' in item: {item}")
+
+    # --- word boundary matching ---
+
+    def test_does_not_match_partial_word(self):
+        # "asthmatic" should NOT trigger a standalone "asthma" match
+        note = "Patient is asthmatic with exercise-induced bronchospasm."
+        result = self.provider.extract(note)
+        exact_asthma = [
+            i for i in result["items"]
+            if i["entity"].lower() == "asthma"
+        ]
+        self.assertEqual(
+            exact_asthma,
+            [],
+            "Provider should not extract 'asthma' as a standalone entity from 'asthmatic'",
+        )
+
+    # --- category field values ---
+
+    def test_diagnosis_category_value(self):
+        result = self.provider.extract("Patient has hypertension.")
+        diag_items = [i for i in result["items"] if i["category"] == "diagnosis"]
+        self.assertTrue(len(diag_items) > 0)
+
+    def test_medication_category_value(self):
+        result = self.provider.extract("Patient takes metformin daily.")
+        med_items = [i for i in result["items"] if i["category"] == "medication"]
+        self.assertTrue(len(med_items) > 0)
+
+
+# ---------------------------------------------------------------------------
+# LocalClinicalVerificationProvider
+# ---------------------------------------------------------------------------
+
+class TestLocalClinicalVerificationProvider(PureTestCase):
+    """Unit tests for LocalClinicalVerificationProvider.verify().
+
+    The provider returns item_checks with keys:
+        item_index, outcome, status_check, reason, evidence
+    Failure cases (offset mismatch, ungrounded entity) set outcome='unsupported'.
+    """
+
+    def setUp(self):
+        self.provider = LocalClinicalVerificationProvider()
+
+    # --- type safety ---
+
+    def test_raises_type_error_for_none_note(self):
+        extraction = _make_extraction_result([])
+        with self.assertRaises(TypeError):
+            self.provider.verify(None, extraction, _empty_coding())
+
+    def test_raises_type_error_for_int_note(self):
+        extraction = _make_extraction_result([])
+        with self.assertRaises(TypeError):
+            self.provider.verify(42, extraction, _empty_coding())
+
+    # --- valid items pass ---
+
+    def test_valid_item_outcome_is_supported(self):
+        note = "Patient has hypertension."
+        item = _make_valid_item(note, "hypertension", "diagnosis", "active")
+        extraction = _make_extraction_result([item])
+        result = self.provider.verify(note, extraction, _empty_coding())
+        self.assertEqual(result["item_checks"][0]["outcome"], "supported")
+
+    def test_valid_item_does_not_trigger_needs_review(self):
+        note = "Patient has hypertension."
+        item = _make_valid_item(note, "hypertension", "diagnosis", "active")
+        extraction = _make_extraction_result([item])
+        result = self.provider.verify(note, extraction, _empty_coding())
+        self.assertFalse(result["needs_review"])
+
+    def test_empty_extraction_passes(self):
+        note = "Patient has no complaints."
+        extraction = _make_extraction_result([])
+        result = self.provider.verify(note, extraction, _empty_coding())
+        self.assertFalse(result["needs_review"])
+        self.assertEqual(result["item_checks"], [])
+
+    def test_multiple_valid_items_all_supported(self):
+        note = "Patient has hypertension and takes metformin daily."
+        items = [
+            _make_valid_item(note, "hypertension", "diagnosis", "active"),
+            _make_valid_item(note, "metformin", "medication", "current"),
+        ]
+        extraction = _make_extraction_result(items)
+        result = self.provider.verify(note, extraction, _empty_coding())
+        for check in result["item_checks"]:
+            self.assertEqual(
+                check["outcome"], "supported",
+                f"Expected outcome=supported: {check}"
+            )
+
+    def test_valid_item_has_evidence_reference(self):
+        note = "Patient has hypertension."
+        item = _make_valid_item(note, "hypertension", "diagnosis", "active")
+        extraction = _make_extraction_result([item])
+        result = self.provider.verify(note, extraction, _empty_coding())
+        check = result["item_checks"][0]
+        self.assertTrue(len(check["evidence"]) > 0, "Supported item must have evidence references.")
+
+    def test_valid_item_evidence_matches_note_span(self):
+        note = "Patient has hypertension."
+        item = _make_valid_item(note, "hypertension", "diagnosis", "active")
+        extraction = _make_extraction_result([item])
+        result = self.provider.verify(note, extraction, _empty_coding())
+        check = result["item_checks"][0]
+        for ev in check["evidence"]:
+            self.assertEqual(
+                note[ev["start_offset"]:ev["end_offset"]],
+                ev["evidence_text"],
+            )
+
+    # --- offset mismatch triggers unsupported outcome ---
+
+    def test_wrong_offset_is_unsupported(self):
+        note = "Patient has hypertension."
+        # character 0 is 'P', not 'hypertension'
+        bad_item = _make_invalid_extraction([{
+            "category": "diagnosis",
+            "entity": "hypertension",
+            "evidence_text": "hypertension",
+            "start_offset": 0,
+            "end_offset": 12,
+            "status": "active",
+            "attributes": {},
+        }])
+        result = self.provider.verify(note, bad_item, _empty_coding())
+        self.assertNotEqual(result["item_checks"][0]["outcome"], "supported")
+        self.assertTrue(result["needs_review"])
+
+    def test_negative_start_offset_is_unsupported(self):
+        note = "Patient has hypertension."
+        bad_item = _make_invalid_extraction([{
+            "category": "diagnosis",
+            "entity": "hypertension",
+            "evidence_text": "hypertension",
+            "start_offset": -1,
+            "end_offset": 12,
+            "status": "active",
+            "attributes": {},
+        }])
+        result = self.provider.verify(note, bad_item, _empty_coding())
+        self.assertNotEqual(result["item_checks"][0]["outcome"], "supported")
+
+    def test_end_beyond_note_length_is_unsupported(self):
+        note = "Short."
+        bad_item = _make_invalid_extraction([{
+            "category": "diagnosis",
+            "entity": "Short",
+            "evidence_text": "Short",
+            "start_offset": 0,
+            "end_offset": 9999,
+            "status": "active",
+            "attributes": {},
+        }])
+        result = self.provider.verify(note, bad_item, _empty_coding())
+        self.assertNotEqual(result["item_checks"][0]["outcome"], "supported")
+
+    # --- entity not grounded in evidence ---
+
+    def test_entity_not_in_evidence_is_unsupported(self):
+        note = "Patient has hypertension."
+        idx = note.lower().find("hypertension")
+        bad_item = _make_invalid_extraction([{
+            "category": "diagnosis",
+            "entity": "diabetes",        # entity not in evidence_text
+            "evidence_text": note[idx: idx + len("hypertension")],
+            "start_offset": idx,
+            "end_offset": idx + len("hypertension"),
+            "status": "active",
+            "attributes": {},
+        }])
+        result = self.provider.verify(note, bad_item, _empty_coding())
+        self.assertNotEqual(result["item_checks"][0]["outcome"], "supported")
+        self.assertTrue(result["needs_review"])
+
+    # --- result schema ---
+
+    def test_result_has_item_checks(self):
+        note = "Patient has asthma."
+        result = self.provider.verify(note, _make_extraction_result([]), _empty_coding())
+        self.assertIn("item_checks", result)
+
+    def test_result_has_needs_review(self):
+        note = "Patient has asthma."
+        result = self.provider.verify(note, _make_extraction_result([]), _empty_coding())
+        self.assertIn("needs_review", result)
+
+    def test_result_has_review_reasons(self):
+        note = "Patient has asthma."
+        result = self.provider.verify(note, _make_extraction_result([]), _empty_coding())
+        self.assertIn("review_reasons", result)
+
+    def test_result_has_potential_omissions(self):
+        note = "Patient has asthma."
+        result = self.provider.verify(note, _make_extraction_result([]), _empty_coding())
+        self.assertIn("potential_omissions", result)
+
+    def test_needs_review_is_bool(self):
+        note = "Patient has asthma."
+        result = self.provider.verify(note, _make_extraction_result([]), _empty_coding())
+        self.assertIsInstance(result["needs_review"], bool)
+
+    def test_item_check_has_outcome_key(self):
+        note = "Patient has hypertension."
+        item = _make_valid_item(note, "hypertension", "diagnosis", "active")
+        extraction = _make_extraction_result([item])
+        result = self.provider.verify(note, extraction, _empty_coding())
+        self.assertIn("outcome", result["item_checks"][0])
+
+    def test_item_check_has_status_check_key(self):
+        note = "Patient has hypertension."
+        item = _make_valid_item(note, "hypertension", "diagnosis", "active")
+        extraction = _make_extraction_result([item])
+        result = self.provider.verify(note, extraction, _empty_coding())
+        self.assertIn("status_check", result["item_checks"][0])
+
+    def test_item_check_has_reason_key(self):
+        note = "Patient has hypertension."
+        item = _make_valid_item(note, "hypertension", "diagnosis", "active")
+        extraction = _make_extraction_result([item])
+        result = self.provider.verify(note, extraction, _empty_coding())
+        self.assertIn("reason", result["item_checks"][0])
+
+    def test_diagnosis_item_check_status_check_is_not_applicable(self):
+        # Diagnoses should have status_check set (not 'not_applicable')
+        note = "Patient has hypertension."
+        item = _make_valid_item(note, "hypertension", "diagnosis", "active")
+        extraction = _make_extraction_result([item])
+        result = self.provider.verify(note, extraction, _empty_coding())
+        self.assertNotEqual(result["item_checks"][0]["status_check"], "not_applicable")
+
+    def test_procedure_item_check_status_check_is_not_applicable(self):
+        # Procedures should have status_check='not_applicable'
+        note = "Patient underwent colonoscopy for screening."
+        item = _make_valid_item(note, "colonoscopy", "procedure", None)
+        extraction = _make_extraction_result([item])
+        result = self.provider.verify(note, extraction, _empty_coding())
+        self.assertEqual(result["item_checks"][0]["status_check"], "not_applicable")
+
+
+===== .\dashboard\test_verification.py =====
+"""Tests for the independent verification output contract."""
+
+from django.test import SimpleTestCase
+
+from dashboard.extraction.schema import ExtractionResult
+from dashboard.extraction.verification import (
+    VerificationOutputError,
+    validate_verification_output,
+)
+
+
+class VerificationContractTests(SimpleTestCase):
+    NOTE = (
+        "Assessment: diabetes. "
+        "Medication: metformin. "
+        "Allergy: penicillin allergy."
+    )
+
+    def make_extraction(self):
+        items = []
+
+        for category, entity, status, evidence in [
+            ("diagnosis", "diabetes", "active", "diabetes"),
+            ("medication", "metformin", "current", "metformin"),
+        ]:
+            start = self.NOTE.index(evidence)
+            items.append(
+                {
+                    "category": category,
+                    "entity": entity,
+                    "status": status,
+                    "evidence_text": evidence,
+                    "start_offset": start,
+                    "end_offset": start + len(evidence),
+                    "attributes": {},
+                }
+            )
+
+        return ExtractionResult.model_validate(
+            {
+                "items": items,
+                "needs_review": False,
+                "review_reasons": [],
+            }
+        )
+
+    def make_payload(self):
+        extraction = self.make_extraction()
+        checks = []
+
+        for index, item in enumerate(extraction.items):
+            checks.append(
+                {
+                    "item_index": index,
+                    "outcome": "supported",
+                    "status_check": "correct",
+                    "reason": "The cited text supports this mention.",
+                    "evidence": [
+                        {
+                            "evidence_text": item.evidence_text,
+                            "start_offset": item.start_offset,
+                            "end_offset": item.end_offset,
+                        }
+                    ],
+                }
+            )
+
+        payload = {
+            "item_checks": checks,
+            "potential_omissions": [],
+            "needs_review": False,
+            "review_reasons": [],
+        }
+
+        return extraction, payload
+
+    def test_accepts_complete_verification(self):
+        extraction, payload = self.make_payload()
+
+        result = validate_verification_output(
+            payload,
+            extraction,
+            self.NOTE,
+        )
+
+        self.assertEqual(len(result.item_checks), 2)
+        self.assertEqual(
+            [check.item_index for check in result.item_checks],
+            [0, 1],
+        )
+        self.assertFalse(result.needs_review)
+
+    def test_verifies_all_five_categories_with_unicode_offsets(self):
+        note = (
+            "ðŸ˜€ Assessment: diabetes. "
+            "Medication: metformin. "
+            "Procedure: appendectomy. "
+            "Allergy: cafÃ© au lait sensitivity. "
+            "Vitals: temperature 38 C."
+        )
+        values = [
+            ("diagnosis", "diabetes", "active", "diabetes", "correct"),
+            ("medication", "metformin", "current", "metformin", "correct"),
+            (
+                "procedure",
+                "appendectomy",
+                None,
+                "appendectomy",
+                "not_applicable",
+            ),
+            (
+                "allergy",
+                "cafÃ© au lait sensitivity",
+                None,
+                "cafÃ© au lait sensitivity",
+                "not_applicable",
+            ),
+            (
+                "vital_sign",
+                "temperature",
+                None,
+                "temperature 38 C",
+                "not_applicable",
+            ),
+        ]
+        items = []
+        checks = []
+        for index, (category, entity, status, evidence, status_check) in enumerate(
+            values
+        ):
+            start = note.index(evidence)
+            items.append(
+                {
+                    "category": category,
+                    "entity": entity,
+                    "status": status,
+                    "evidence_text": evidence,
+                    "start_offset": start,
+                    "end_offset": start + len(evidence),
+                    "attributes": {},
+                }
+            )
+            checks.append(
+                {
+                    "item_index": index,
+                    "outcome": "supported",
+                    "status_check": status_check,
+                    "reason": "Synthetic source evidence supports the item.",
+                    "evidence": [
+                        {
+                            "evidence_text": evidence,
+                            "start_offset": start,
+                            "end_offset": start + len(evidence),
+                        }
+                    ],
+                }
+            )
+
+        extraction = ExtractionResult.model_validate(
+            {
+                "items": items,
+                "needs_review": False,
+                "review_reasons": [],
+            }
+        )
+        result = validate_verification_output(
+            {
+                "item_checks": checks,
+                "potential_omissions": [],
+                "needs_review": False,
+                "review_reasons": [],
+            },
+            extraction,
+            note,
+        )
+
+        self.assertEqual(len(result.item_checks), 5)
+
+    def test_rejects_missing_item_check(self):
+        extraction, payload = self.make_payload()
+        payload["item_checks"].pop()
+
+        with self.assertRaises(VerificationOutputError) as context:
+            validate_verification_output(
+                payload,
+                extraction,
+                self.NOTE,
+            )
+
+        self.assertEqual(
+            context.exception.code,
+            "verification_coverage_failed",
+        )
+
+    def test_rejects_duplicate_item_checks(self):
+        extraction, payload = self.make_payload()
+        payload["item_checks"].append(
+            payload["item_checks"][0].copy()
+        )
+
+        with self.assertRaises(VerificationOutputError) as context:
+            validate_verification_output(
+                payload,
+                extraction,
+                self.NOTE,
+            )
+
+        self.assertEqual(
+            context.exception.code,
+            "verification_coverage_failed",
+        )
+
+    def test_rejects_evidence_that_does_not_match_note(self):
+        extraction, payload = self.make_payload()
+        payload["item_checks"][0]["evidence"][0][
+            "evidence_text"
+        ] = "unsupported phrase"
+
+        with self.assertRaises(VerificationOutputError) as context:
+            validate_verification_output(
+                payload,
+                extraction,
+                self.NOTE,
+            )
+
+        self.assertEqual(
+            context.exception.code,
+            "verification_evidence_failed",
+        )
+
+    def test_rejects_evidence_outside_note(self):
+        extraction, payload = self.make_payload()
+        start = len(self.NOTE) + 1
+
+        payload["item_checks"][0]["evidence"][0].update(
+            {
+                "start_offset": start,
+                "end_offset": start + len("diabetes"),
+            }
+        )
+
+        with self.assertRaises(VerificationOutputError) as context:
+            validate_verification_output(
+                payload,
+                extraction,
+                self.NOTE,
+            )
+
+        self.assertEqual(
+            context.exception.code,
+            "verification_evidence_failed",
+        )
+
+    def test_requires_status_check_for_diagnosis_and_medication(self):
+        extraction, payload = self.make_payload()
+        payload["item_checks"][0]["status_check"] = "not_applicable"
+
+        with self.assertRaises(VerificationOutputError) as context:
+            validate_verification_output(
+                payload,
+                extraction,
+                self.NOTE,
+            )
+
+        self.assertEqual(
+            context.exception.code,
+            "verification_status_check_invalid",
+        )
+
+    def test_rejects_unresolved_item_without_review(self):
+        extraction, payload = self.make_payload()
+        payload["item_checks"][0]["outcome"] = "unsupported"
+
+        with self.assertRaises(VerificationOutputError) as context:
+            validate_verification_output(
+                payload,
+                extraction,
+                self.NOTE,
+            )
+
+        self.assertEqual(
+            context.exception.code,
+            "verification_schema_failed",
+        )
+
+    def test_review_requires_a_reason(self):
+        extraction, payload = self.make_payload()
+        payload["needs_review"] = True
+
+        with self.assertRaises(VerificationOutputError) as context:
+            validate_verification_output(
+                payload,
+                extraction,
+                self.NOTE,
+            )
+
+        self.assertEqual(
+            context.exception.code,
+            "verification_schema_failed",
+        )
+
+    def test_accepts_supported_potential_omission_for_review(self):
+        extraction, payload = self.make_payload()
+        evidence = "penicillin allergy"
+        start = self.NOTE.index(evidence)
+
+        payload["potential_omissions"] = [
+            {
+                "category": "allergy",
+                "entity": "penicillin allergy",
+                "evidence": {
+                    "evidence_text": evidence,
+                    "start_offset": start,
+                    "end_offset": start + len(evidence),
+                },
+                "reason": (
+                    "This mention may be missing from extraction."
+                ),
+            }
+        ]
+        payload["needs_review"] = True
+        payload["review_reasons"] = [
+            "A possible omitted allergy requires review."
+        ]
+
+        result = validate_verification_output(
+            payload,
+            extraction,
+            self.NOTE,
+        )
+
+        self.assertTrue(result.needs_review)
+        self.assertEqual(len(result.potential_omissions), 1)
+        self.assertEqual(
+            result.potential_omissions[0].entity,
+            "penicillin allergy",
+        )
+
+    def test_rejects_omission_with_invalid_evidence(self):
+        extraction, payload = self.make_payload()
+
+        payload["potential_omissions"] = [
+            {
+                "category": "allergy",
+                "entity": "penicillin allergy",
+                "evidence": {
+                    "evidence_text": "not in source note",
+                    "start_offset": 0,
+                    "end_offset": len("not in source note"),
+                },
+                "reason": (
+                    "A possible omitted allergy requires review."
+                ),
+            }
+        ]
+        payload["needs_review"] = True
+        payload["review_reasons"] = [
+            "A possible omitted allergy requires review."
+        ]
+
+        with self.assertRaises(VerificationOutputError) as context:
+            validate_verification_output(
+                payload,
+                extraction,
+                self.NOTE,
+            )
+
+        self.assertEqual(
+            context.exception.code,
+            "verification_evidence_failed",
+        )
+
+    def test_rejects_verification_evidence_for_fabricated_entity(self):
+        extraction, payload = self.make_payload()
+        payload["item_checks"][0]["evidence"][0] = {
+            "evidence_text": "metformin",
+            "start_offset": self.NOTE.index("metformin"),
+            "end_offset": self.NOTE.index("metformin") + len("metformin"),
+        }
+
+        with self.assertRaises(VerificationOutputError) as context:
+            validate_verification_output(
+                payload,
+                extraction,
+                self.NOTE,
+            )
+
+        self.assertEqual(
+            context.exception.code,
+            "verification_evidence_failed",
+        )
+        self.assertEqual(
+            context.exception.detail_code,
+            "evidence_entity_mismatch",
+        )
+
+    def test_rejects_omission_evidence_for_fabricated_entity(self):
+        extraction, payload = self.make_payload()
+        payload["potential_omissions"] = [
+            {
+                "category": "allergy",
+                "entity": "severe penicillin allergy",
+                "evidence": {
+                    "evidence_text": "penicillin allergy",
+                    "start_offset": self.NOTE.index("penicillin"),
+                    "end_offset": self.NOTE.index("penicillin")
+                    + len("penicillin allergy"),
+                },
+                "reason": "Synthetic possible omission.",
+            }
+        ]
+        payload["needs_review"] = True
+        payload["review_reasons"] = ["Possible omitted allergy."]
+
+        with self.assertRaises(VerificationOutputError) as context:
+            validate_verification_output(
+                payload,
+                extraction,
+                self.NOTE,
+            )
+
+        self.assertEqual(
+            context.exception.detail_code,
+            "evidence_entity_mismatch",
+        )
+
+    def test_rejects_correct_status_for_negated_source_context(self):
+        note = "Assessment: no evidence of diabetes."
+        start = note.index("diabetes")
+        extraction = ExtractionResult.model_validate(
+            {
+                "items": [
+                    {
+                        "category": "diagnosis",
+                        "entity": "diabetes",
+                        "status": "active",
+                        "evidence_text": "diabetes",
+                        "start_offset": start,
+                        "end_offset": start + len("diabetes"),
+                        "attributes": {},
+                    }
+                ],
+                "needs_review": False,
+                "review_reasons": [],
+            }
+        )
+        payload = {
+            "item_checks": [
+                {
+                    "item_index": 0,
+                    "outcome": "supported",
+                    "status_check": "correct",
+                    "reason": "Synthetic status check.",
+                    "evidence": [
+                        {
+                            "evidence_text": "no evidence of diabetes",
+                            "start_offset": note.index("no evidence"),
+                            "end_offset": note.index("no evidence")
+                            + len("no evidence of diabetes"),
+                        }
+                    ],
+                }
+            ],
+            "potential_omissions": [],
+            "needs_review": False,
+            "review_reasons": [],
+        }
+
+        with self.assertRaises(VerificationOutputError) as context:
+            validate_verification_output(payload, extraction, note)
+
+        self.assertEqual(
+            context.exception.detail_code,
+            "status_context_mismatch",
+        )
+
+===== .\dashboard\test_orchestrator.py =====
+"""Synthetic tests for the clinical workflow orchestrator."""
+
+from unittest.mock import patch
+
+from django.test import SimpleTestCase
+
+from dashboard.extraction.diagnosis_coding import DiagnosisCodingBatch
+from dashboard.extraction.orchestrator import run_agent_workflow
+
+
+def valid_empty_extraction():
+    """Build a valid extraction response with no findings."""
+    return {
+        "items": [],
+        "needs_review": False,
+        "review_reasons": [],
+    }
+
+
+def valid_empty_verification():
+    """Build a valid verification response with no findings."""
+    return {
+        "item_checks": [],
+        "potential_omissions": [],
+        "needs_review": False,
+        "review_reasons": [],
+    }
+
+
+class SyntheticExtractionProvider:
+    """Deterministic extraction provider for tests."""
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = 0
+
+    def extract(self, input_text):
+        self.calls += 1
+        response = self.responses.pop(0)
+
+        if isinstance(response, Exception):
+            raise response
+
+        return response
+
+
+class SyntheticVerificationProvider:
+    """Deterministic verification provider for tests."""
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = 0
+
+    def verify(self, original_note, extraction, coding):
+        self.calls += 1
+        response = self.responses.pop(0)
+
+        if isinstance(response, Exception):
+            raise response
+
+        return response
+
+
+class ProviderCodedError(RuntimeError):
+    code = "provider-error-with-sensitive-details"
+
+
+class AgentWorkflowTests(SimpleTestCase):
+    def setUp(self):
+        self.note = "Synthetic note for orchestration testing."
+
+        self.coding_patcher = patch(
+            "dashboard.extraction.orchestrator.code_diagnoses",
+            return_value=DiagnosisCodingBatch(diagnoses=()),
+        )
+        self.mock_coding = self.coding_patcher.start()
+        self.addCleanup(self.coding_patcher.stop)
+
+    def test_empty_note_findings_complete_successfully(self):
+        extraction_provider = SyntheticExtractionProvider(
+            [valid_empty_extraction()]
+        )
+        verification_provider = SyntheticVerificationProvider(
+            [valid_empty_verification()]
+        )
+
+        result = run_agent_workflow(
+            extraction_provider,
+            verification_provider,
+            self.note,
+        )
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.extraction_attempts, 1)
+        self.assertEqual(result.verification_attempts, 1)
+        self.assertEqual(result.item_dispositions, ())
+        self.assertIsNone(result.failure_code)
+        self.mock_coding.assert_called_once()
+
+    def test_invalid_extraction_is_retried_within_limit(self):
+        extraction_provider = SyntheticExtractionProvider(
+            [
+                {
+                    "items": "invalid",
+                    "needs_review": False,
+                    "review_reasons": [],
+                },
+                valid_empty_extraction(),
+            ]
+        )
+        verification_provider = SyntheticVerificationProvider(
+            [valid_empty_verification()]
+        )
+
+        result = run_agent_workflow(
+            extraction_provider,
+            verification_provider,
+            self.note,
+            max_extraction_attempts=2,
+        )
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(extraction_provider.calls, 2)
+        self.assertEqual(result.extraction_attempts, 2)
+
+    def test_extraction_failure_stops_after_attempt_limit(self):
+        extraction_provider = SyntheticExtractionProvider(
+            [
+                {
+                    "items": "invalid",
+                    "needs_review": False,
+                    "review_reasons": [],
+                },
+                {
+                    "items": "still invalid",
+                    "needs_review": False,
+                    "review_reasons": [],
+                },
+            ]
+        )
+        verification_provider = SyntheticVerificationProvider([])
+
+        result = run_agent_workflow(
+            extraction_provider,
+            verification_provider,
+            self.note,
+            max_extraction_attempts=2,
+        )
+
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(result.extraction_attempts, 2)
+        self.assertEqual(
+            result.failure_code,
+            "schema_validation_failed",
+        )
+        self.assertEqual(verification_provider.calls, 0)
+        self.mock_coding.assert_not_called()
+
+    def test_verification_failure_requires_review(self):
+        extraction_provider = SyntheticExtractionProvider(
+            [valid_empty_extraction()]
+        )
+        verification_provider = SyntheticVerificationProvider(
+            [
+                RuntimeError("synthetic private provider error"),
+                RuntimeError("synthetic private provider error"),
+            ]
+        )
+
+        result = run_agent_workflow(
+            extraction_provider,
+            verification_provider,
+            self.note,
+            max_verification_attempts=2,
+        )
+
+        self.assertEqual(result.status, "needs_review")
+        self.assertEqual(result.verification_attempts, 2)
+        self.assertEqual(result.failure_code, "verification_failed")
+        self.assertIsNone(result.verification)
+        self.assertTrue(result.review_reasons)
+        self.assertNotIn(
+            "synthetic private provider error",
+            str(result),
+        )
+
+    def test_unrecognized_provider_failure_code_is_sanitized(self):
+        extraction_provider = SyntheticExtractionProvider(
+            [valid_empty_extraction()]
+        )
+        verification_provider = SyntheticVerificationProvider(
+            [ProviderCodedError(), ProviderCodedError()]
+        )
+
+        result = run_agent_workflow(
+            extraction_provider,
+            verification_provider,
+            self.note,
+            max_verification_attempts=2,
+        )
+
+        self.assertEqual(result.failure_code, "verification_failed")
+
+    def test_malformed_verification_is_retried_and_keeps_safe_code(self):
+        extraction_provider = SyntheticExtractionProvider(
+            [valid_empty_extraction()]
+        )
+        verification_provider = SyntheticVerificationProvider(
+            [{}, {}]
+        )
+
+        result = run_agent_workflow(
+            extraction_provider,
+            verification_provider,
+            self.note,
+            max_verification_attempts=2,
+        )
+
+        self.assertEqual(result.status, "needs_review")
+        self.assertEqual(result.verification_attempts, 2)
+        self.assertEqual(result.failure_code, "verification_schema_failed")
+        self.assertIsNone(result.verification)
+
+    def test_verification_timeout_is_bounded_and_safely_classified(self):
+        extraction_provider = SyntheticExtractionProvider(
+            [valid_empty_extraction()]
+        )
+        verification_provider = SyntheticVerificationProvider(
+            [TimeoutError(), TimeoutError(), TimeoutError()]
+        )
+
+        result = run_agent_workflow(
+            extraction_provider,
+            verification_provider,
+            self.note,
+            max_verification_attempts=3,
+        )
+
+        self.assertEqual(result.status, "needs_review")
+        self.assertEqual(result.verification_attempts, 3)
+        self.assertEqual(result.failure_code, "verification_timeout")
+        self.assertNotIn("TimeoutError", str(result))
+
+    def test_unsupported_item_is_not_accepted(self):
+        note = "Assessment: headache."
+        evidence = "headache"
+        start = note.index(evidence)
+
+        extraction_payload = {
+            "items": [
+                {
+                    "category": "diagnosis",
+                    "entity": "headache",
+                    "status": "active",
+                    "evidence_text": evidence,
+                    "start_offset": start,
+                    "end_offset": start + len(evidence),
+                    "attributes": {},
+                }
+            ],
+            "needs_review": False,
+            "review_reasons": [],
+        }
+
+        verification_payload = {
+            "item_checks": [
+                {
+                    "item_index": 0,
+                    "outcome": "unsupported",
+                    "status_check": "correct",
+                    "reason": (
+                        "The mention is not supported as a diagnosis."
+                    ),
+                    "evidence": [
+                        {
+                            "evidence_text": evidence,
+                            "start_offset": start,
+                            "end_offset": start + len(evidence),
+                        }
+                    ],
+                }
+            ],
+            "potential_omissions": [],
+            "needs_review": True,
+            "review_reasons": [
+                "An unsupported diagnosis requires review."
+            ],
+        }
+
+        result = run_agent_workflow(
+            SyntheticExtractionProvider([extraction_payload]),
+            SyntheticVerificationProvider([verification_payload]),
+            note,
+        )
+
+        self.assertEqual(result.status, "needs_review")
+        self.assertEqual(len(result.item_dispositions), 1)
+        self.assertEqual(
+            result.item_dispositions[0].decision,
+            "rejected",
+        )
+
+    def _run_diagnosis_scenario(
+        self,
+        *,
+        note,
+        extraction_evidence,
+        status,
+        verification_outcome,
+        status_check,
+        verification_evidence=None,
+    ):
+        """Run one synthetic diagnosis through the workflow."""
+        extraction_start = note.index(extraction_evidence)
+
+        extraction_payload = {
+            "items": [
+                {
+                    "category": "diagnosis",
+                    "entity": "diabetes",
+                    "status": status,
+                    "evidence_text": extraction_evidence,
+                    "start_offset": extraction_start,
+                    "end_offset": (
+                        extraction_start + len(extraction_evidence)
+                    ),
+                    "attributes": {},
+                }
+            ],
+            "needs_review": False,
+            "review_reasons": [],
+        }
+
+        cited_evidence = verification_evidence or extraction_evidence
+        verification_start = note.index(cited_evidence)
+
+        verification_payload = {
+            "item_checks": [
+                {
+                    "item_index": 0,
+                    "outcome": verification_outcome,
+                    "status_check": status_check,
+                    "reason": "Synthetic verification finding.",
+                    "evidence": [
+                        {
+                            "evidence_text": cited_evidence,
+                            "start_offset": verification_start,
+                            "end_offset": (
+                                verification_start + len(cited_evidence)
+                            ),
+                        }
+                    ],
+                }
+            ],
+            "potential_omissions": [],
+            "needs_review": True,
+            "review_reasons": [
+                "Synthetic scenario requires human review."
+            ],
+        }
+
+        return run_agent_workflow(
+            SyntheticExtractionProvider([extraction_payload]),
+            SyntheticVerificationProvider([verification_payload]),
+            note,
+        )
+
+    def test_negated_diagnosis_is_not_accepted_as_active(self):
+        note = "Assessment: no evidence of diabetes."
+
+        result = self._run_diagnosis_scenario(
+            note=note,
+            extraction_evidence="diabetes",
+            status="active",
+            verification_outcome="contradicted",
+            status_check="incorrect",
+            verification_evidence="no evidence of diabetes",
+        )
+
+        self.assertEqual(result.status, "needs_review")
+        self.assertEqual(len(result.item_dispositions), 1)
+        self.assertEqual(
+            result.item_dispositions[0].decision,
+            "rejected",
+        )
+
+    def test_uncertain_diagnosis_requires_human_review(self):
+        note = "Assessment: possible diabetes."
+
+        result = self._run_diagnosis_scenario(
+            note=note,
+            extraction_evidence="possible diabetes",
+            status="suspected",
+            verification_outcome="uncertain",
+            status_check="correct",
+        )
+
+        self.assertEqual(result.status, "needs_review")
+        self.assertEqual(
+            result.item_dispositions[0].decision,
+            "needs_review",
+        )
+
+    def test_incorrect_diagnosis_status_requires_review(self):
+        note = "History of diabetes; no current diagnosis."
+
+        result = self._run_diagnosis_scenario(
+            note=note,
+            extraction_evidence="diabetes",
+            status="active",
+            verification_outcome="supported",
+            status_check="incorrect",
+            verification_evidence=note,
+        )
+
+        self.assertEqual(result.status, "needs_review")
+        self.assertEqual(
+            result.item_dispositions[0].decision,
+            "needs_review",
+        )
+        self.assertIn(
+            "Status verification was incorrect.",
+            result.item_dispositions[0].reasons,
+        )
+
+    def test_unexpected_verification_validator_error_is_not_retried(self):
+        extraction_provider = SyntheticExtractionProvider(
+            [valid_empty_extraction()]
+        )
+        verification_provider = SyntheticVerificationProvider(
+            [valid_empty_verification()]
+        )
+
+        with patch(
+            "dashboard.extraction.orchestrator.validate_verification_output",
+            side_effect=RuntimeError(
+                "Synthetic validator programming error."
+            ),
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "Synthetic validator programming error",
+            ):
+                run_agent_workflow(
+                    extraction_provider,
+                    verification_provider,
+                    self.note,
+                    max_verification_attempts=3,
+                )
+
+        self.assertEqual(verification_provider.calls, 1)
+
+    def test_potentially_omitted_diagnosis_requires_review(self):
+        note = "Assessment: diabetes and hypertension."
+        evidence = "hypertension"
+        start = note.index(evidence)
+
+        extraction_payload = {
+            "items": [],
+            "needs_review": False,
+            "review_reasons": [],
+        }
+
+        verification_payload = {
+            "item_checks": [],
+            "potential_omissions": [
+                {
+                    "category": "diagnosis",
+                    "entity": "hypertension",
+                    "evidence": {
+                        "evidence_text": evidence,
+                        "start_offset": start,
+                        "end_offset": start + len(evidence),
+                    },
+                    "reason": (
+                        "A possible diagnosis was omitted from extraction."
+                    ),
+                }
+            ],
+            "needs_review": True,
+            "review_reasons": [
+                "A possible omitted diagnosis requires review."
+            ],
+        }
+
+        result = run_agent_workflow(
+            SyntheticExtractionProvider([extraction_payload]),
+            SyntheticVerificationProvider([verification_payload]),
+            note,
+        )
+
+        self.assertEqual(result.status, "needs_review")
+        self.assertIn(
+            "Potential omission requires review: hypertension.",
+            result.review_reasons,
+        )
