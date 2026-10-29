@@ -1,0 +1,31 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}{{ page_title }} | Mirai Clinical{% endblock %}
+{% block breadcrumb_label %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">WORKSPACE</p>
+        <h1>{{ page_title }}</h1>
+        <p class="page-description">{{ page_description }}</p>
+    </div>
+
+    <span class="demo-badge">
+        <span class="demo-dot"></span>
+        Demo environment
+    </span>
+</section>
+
+<section class="panel placeholder-panel">
+    <span class="placeholder-symbol" aria-hidden="true">···</span>
+    <p class="eyebrow">PLANNED FEATURE</p>
+    <h2>This screen is not implemented yet</h2>
+    <p class="placeholder-description">{{ stage_note }}</p>
+
+    <a class="btn btn-primary"
+       href="{% url 'dashboard:home' %}">
+        Return to dashboard
+    </a>
+</section>
+{% endblock %}

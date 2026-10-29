@@ -1,0 +1,167 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}Patients | Mirai Clinical{% endblock %}
+{% block breadcrumb_label %}Patients{% endblock %}
+
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">PATIENT MANAGEMENT</p>
+        <h1>Patients</h1>
+        <p class="page-description">
+            Search patient records your account is authorized to access.
+        </p>
+    </div>
+
+    <div class="d-flex align-items-center gap-2">
+        <a class="btn btn-primary btn-sm" href="{% url 'dashboard:patient_create' %}">
+            + Register Patient
+        </a>
+        <span class="demo-badge">
+            <span class="demo-dot"></span>
+            Synthetic data only
+        </span>
+    </div>
+</section>
+
+<section class="panel patient-list-panel">
+    <div class="panel-toolbar">
+        <form
+            method="get"
+            action="{% url 'dashboard:patients' %}"
+            class="patient-search-form"
+        >
+            <label class="visually-hidden" for="patient-query">
+                Search patients
+            </label>
+
+            <input
+                id="patient-query"
+                class="form-control table-search"
+                type="search"
+                name="q"
+                value="{{ query }}"
+                maxlength="100"
+                placeholder="Search by patient ID or name"
+                autocomplete="off"
+            >
+
+            <button class="btn btn-primary btn-sm" type="submit">
+                Search
+            </button>
+
+            {% if query %}
+                <a
+                    class="btn btn-outline-secondary btn-sm"
+                    href="{% url 'dashboard:patients' %}"
+                >
+                    Clear
+                </a>
+            {% endif %}
+        </form>
+
+        <span class="table-note">
+            {{ page_obj.paginator.count }} matching records
+        </span>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr>
+                    <th scope="col">Patient ID</th>
+                    <th scope="col">Patient name</th>
+                    <th scope="col">Encounters</th>
+                    <th scope="col">Record updated</th>
+                    <th scope="col">Action</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for patient in patients %}
+                    <tr>
+                        <td>
+                            <span class="patient-id">
+                                {{ patient.identifier }}
+                            </span>
+                        </td>
+
+                        <td>{{ patient.display_name }}</td>
+
+                        <td>{{ patient.encounter_count }}</td>
+
+                        <td class="date-cell">
+                            {{ patient.updated_at|date:"d M Y, H:i" }}
+                        </td>
+
+                        <td>
+                            <a
+                                class="btn btn-outline-secondary btn-sm"
+                                href="{% url 'dashboard:patient_detail' patient_id=patient.pk %}"
+                            >
+                                View record
+                            </a>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="5">
+                            <div class="empty-state">
+                                {% if query %}
+                                    <h2>No matching patients</h2>
+                                    <p>
+                                        Try a different search or clear
+                                        the current search.
+                                    </p>
+                                    <a
+                                        class="btn btn-outline-secondary btn-sm"
+                                        href="{% url 'dashboard:patients' %}"
+                                    >
+                                        Clear search
+                                    </a>
+                                {% else %}
+                                    <h2>No accessible patient records</h2>
+                                    <p>
+                                        Create synthetic patient records
+                                        and assign them to your Doctor
+                                        account using Django Admin.
+                                    </p>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+        <div class="panel-footer patient-pagination">
+            <span>
+                Page {{ page_obj.number }} of
+                {{ page_obj.paginator.num_pages }}
+            </span>
+
+            <nav aria-label="Patient list pages" class="pagination-links">
+                {% if page_obj.has_previous %}
+                    <a
+                        class="btn btn-outline-secondary btn-sm"
+                        href="?q={{ query|urlencode }}&page={{ page_obj.previous_page_number }}"
+                    >
+                        Previous
+                    </a>
+                {% endif %}
+
+                {% if page_obj.has_next %}
+                    <a
+                        class="btn btn-outline-secondary btn-sm"
+                        href="?q={{ query|urlencode }}&page={{ page_obj.next_page_number }}"
+                    >
+                        Next
+                    </a>
+                {% endif %}
+            </nav>
+        </div>
+    {% endif %}
+</section>
+{% endblock %}

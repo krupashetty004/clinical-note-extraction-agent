@@ -1,0 +1,203 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}Clinical workspace | Mirai Clinical{% endblock %}
+{% block breadcrumb_label %}Overview{% endblock %}
+
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">WORKSPACE OVERVIEW</p>
+        <h1>Clinical workspace</h1>
+        <p class="page-description">
+            Monitor accessible patient records and encounter activity.
+        </p>
+    </div>
+
+    <span class="demo-badge">
+        <span class="demo-dot"></span>
+        Synthetic data only
+    </span>
+</section>
+
+<section class="summary-grid" aria-label="Workspace statistics">
+    {% for card in summary_cards %}
+        <article class="summary-card">
+            <div class="summary-card-top">
+                <span class="summary-label">{{ card.label }}</span>
+                <span
+                    class="summary-symbol tone-{{ card.tone }}"
+                    aria-hidden="true"
+                >
+                    {{ card.symbol }}
+                </span>
+            </div>
+
+            <p class="summary-value">{{ card.value }}</p>
+            <p class="summary-support">{{ card.support }}</p>
+        </article>
+    {% endfor %}
+</section>
+
+<section class="content-section">
+    <div class="section-heading">
+        <div>
+            <p class="eyebrow">REQUIRES ATTENTION</p>
+            <h2>Priority review queue</h2>
+            <p class="section-description">
+                Authorized processing runs that require human review.
+            </p>
+        </div>
+    </div>
+
+    {% if review_queue %}
+    <div class="panel">
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th scope="col">Patient</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Created</th>
+                        <th scope="col">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for run in review_queue %}
+                    <tr>
+                        <td>{{ run.clinical_note.encounter.patient.identifier }}</td>
+                        <td>{{ run.get_status_display }}</td>
+                        <td class="date-cell">{{ run.created_at|date:"d M Y, H:i" }}</td>
+                        <td>
+                            <a class="btn btn-outline-secondary btn-sm"
+                               href="{% url 'dashboard:processing_run_detail' run_id=run.pk %}">
+                                Review
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="panel empty-state compact-empty-state">
+        <h2>No review items yet</h2>
+        <p>
+            No authorized processing runs currently require review.
+        </p>
+    </div>
+    {% endif %}
+</section>
+
+<section class="content-section">
+    <div class="section-heading section-heading-table">
+        <div>
+            <p class="eyebrow">RECENT ACTIVITY</p>
+            <h2>Recent patient records</h2>
+            <p class="section-description">
+                Only records your account is authorized to access are shown.
+            </p>
+        </div>
+
+        <a
+            class="btn btn-outline-secondary btn-sm"
+            href="{% url 'dashboard:patients' %}"
+        >
+            Browse patients
+        </a>
+    </div>
+
+    <div class="panel">
+        <div class="panel-toolbar">
+            <label class="visually-hidden" for="patient-filter">
+                Filter recent patients
+            </label>
+
+            <input
+                id="patient-filter"
+                class="form-control table-search"
+                type="search"
+                placeholder="Filter displayed records..."
+                autocomplete="off"
+                data-table-filter
+            >
+
+            <span class="table-note">Authorized records only</span>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th scope="col">Patient</th>
+                        <th scope="col">Latest encounter</th>
+                        <th scope="col">Record updated</th>
+                        <th scope="col">Action</th>
+                    </tr>
+                </thead>
+
+                <tbody data-filter-table>
+                    {% for patient in recent_patients %}
+                        <tr data-filter-row>
+                            <td>
+                                <a
+                                    class="patient-id"
+                                    href="{% url 'dashboard:patient_detail' patient_id=patient.pk %}"
+                                >
+                                    {{ patient.identifier }}
+                                </a>
+
+                                <small class="table-subtext">
+                                    {{ patient.display_name }}
+                                </small>
+                            </td>
+
+                            <td>
+                                {% if patient.ordered_encounters %}
+                                    {{ patient.ordered_encounters.0.title }}
+                                {% else %}
+                                    No encounters
+                                {% endif %}
+                            </td>
+
+                            <td class="date-cell">
+                                {{ patient.updated_at|date:"d M Y, H:i" }}
+                            </td>
+
+                            <td>
+                                <a
+                                    class="btn btn-outline-secondary btn-sm"
+                                    href="{% url 'dashboard:patient_detail' patient_id=patient.pk %}"
+                                >
+                                    View
+                                </a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+
+                    <tr data-filter-empty hidden>
+                        <td colspan="4" class="empty-search">
+                            No displayed records match your filter.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        {% if not recent_patients %}
+            <div class="empty-state">
+                <h2>No accessible patient records</h2>
+                <p>
+                    Use Django Admin to create synthetic patients and assign
+                    them to the appropriate Doctor account.
+                </p>
+            </div>
+        {% endif %}
+
+        <div class="panel-footer">
+            <span>Showing up to five recent records</span>
+            <span>Patient and encounter data comes from SQLite</span>
+        </div>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,86 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+{% block breadcrumb_label %}AI settings{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="mb-4">
+        <h1 class="h3 mb-1">AI settings</h1>
+        <p class="text-muted mb-0">Configure only approved providers and models. Credentials remain deployment secrets and are never stored here.</p>
+    </div>
+
+    {% if form.non_field_errors %}
+    <div class="alert alert-danger">{% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}</div>
+    {% endif %}
+    {% if test_result %}
+    <div class="alert alert-info">{{ test_result }}</div>
+    {% endif %}
+
+    <div class="row g-4">
+        <div class="col-lg-7">
+            <form method="post" class="card shadow-sm border-0">
+                {% csrf_token %}
+                <div class="card-body">
+                    <h2 class="h5">Configuration draft</h2>
+                    <p class="small text-muted">Synthetic testing is local-only in this build. Live provider calls are disabled, so no clinical or other user data is sent to a provider from this screen.</p>
+                    {% for field in form %}
+                    <div class="mb-3">
+                        <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                        {{ field }}
+                        {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                        {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="card-footer bg-transparent d-flex gap-2 flex-wrap">
+                    <button class="btn btn-outline-secondary" name="action" value="test" type="submit">Test connection</button>
+                    <button class="btn btn-outline-primary" name="action" value="save_draft" type="submit">Save draft</button>
+                    <button class="btn btn-primary" name="action" value="activate" type="submit">Activate</button>
+                </div>
+            </form>
+        </div>
+        <div class="col-lg-5">
+            <div class="card shadow-sm border-0 mb-3">
+                <div class="card-body">
+                    <h2 class="h5">Active configuration</h2>
+                    {% if active_configuration %}
+                    <dl class="row mb-0">
+                        <dt class="col-sm-5">Provider</dt><dd class="col-sm-7">{{ active_configuration.get_provider_display }}</dd>
+                        <dt class="col-sm-5">Model</dt><dd class="col-sm-7">{{ active_configuration.model }}</dd>
+                        <dt class="col-sm-5">Version</dt><dd class="col-sm-7">{{ active_configuration.version_number }}</dd>
+                        <dt class="col-sm-5">Requests remaining</dt><dd class="col-sm-7">{{ active_configuration.remaining_requests }} / {{ active_configuration.request_limit }}</dd>
+                        <dt class="col-sm-5">Tokens remaining</dt><dd class="col-sm-7">{{ active_configuration.remaining_tokens }} / {{ active_configuration.token_limit }}</dd>
+                    </dl>
+                    {% else %}
+                    <p class="text-muted mb-0">No configuration is active. Processing must remain deferred until an approved configuration is activated.</p>
+                    {% if usage_configuration %}
+                    <p class="small mt-2 mb-0">Requests remaining: {{ usage_configuration.remaining_requests }} · Tokens remaining: {{ usage_configuration.remaining_tokens }}.</p>
+                    {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+            {% if usage_configuration %}
+            <div class="card shadow-sm border-0 mb-3">
+                <div class="card-body">
+                    <h2 class="h5">Usage tracking</h2>
+                    <p class="small text-muted">These are application-tracked limits and usage counters. Provider dashboards remain authoritative for actual account quota.</p>
+                    <div class="progress mb-2" role="progressbar" aria-label="Tracked request usage" aria-valuenow="{{ usage_configuration.requests_used }}" aria-valuemin="0" aria-valuemax="{{ usage_configuration.request_limit }}">
+                        <div class="progress-bar" style="width: {% widthratio usage_configuration.requests_used usage_configuration.request_limit 100 %}%;">{{ usage_configuration.requests_used }} requests used</div>
+                    </div>
+                    <div class="progress" role="progressbar" aria-label="Tracked token usage" aria-valuenow="{{ usage_configuration.tokens_used }}" aria-valuemin="0" aria-valuemax="{{ usage_configuration.token_limit }}">
+                        <div class="progress-bar bg-info" style="width: {% widthratio usage_configuration.tokens_used usage_configuration.token_limit 100 %}%;">{{ usage_configuration.tokens_used }} tokens used</div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h2 class="h5">Credential status</h2>
+                    <p class="mb-0">{% if provider_key_configured %}A Groq deployment key is configured in the process environment.{% else %}No Groq deployment key is configured in this draft.{% endif %} Raw keys are never displayed or logged.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

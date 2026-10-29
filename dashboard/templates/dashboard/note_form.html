@@ -1,0 +1,113 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}Add clinical note | Mirai Clinical{% endblock %}
+{% block breadcrumb_label %}Add clinical note{% endblock %}
+
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">CLINICAL NOTE</p>
+        <h1>Add clinical note</h1>
+        <p class="page-description">
+            Patient {{ patient.identifier }} —
+            {{ patient.display_name }}
+        </p>
+    </div>
+</section>
+
+<div class="alert alert-warning" role="alert">
+    <strong>Synthetic data only.</strong>
+    This demonstration is not approved for real clinical use.
+    Do not enter real patient information, protected health
+    information (PHI), or identifiable clinical notes.
+</div>
+
+<section class="panel note-entry-panel">
+    <div class="note-entry-heading">
+        <div>
+            <h2>{{ encounter.title }}</h2>
+            <p class="section-description">
+                Encounter date:
+                {{ encounter.encounter_date|date:"d M Y, H:i" }}
+            </p>
+        </div>
+
+        <span class="count-pill">
+            New version: {{ next_version }}
+        </span>
+    </div>
+
+    <div class="note-integrity-notice">
+        **Version history is preserved.**
+
+        Saving creates a new note version. It does not replace a previous
+        version. Use synthetic text during development.
+    </div>
+
+    <form method="post" enctype="multipart/form-data" class="note-entry-form">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">
+                {{ form.non_field_errors }}
+            </div>
+        {% endif %}
+
+        <div class="mb-4 p-3 border rounded bg-light">
+            <label
+                class="form-label fw-bold"
+                for="{{ form.source_file.id_for_label }}"
+            >
+                Upload Multimodal Source (PDF / Image OCR / Audio Dictation / Text)
+            </label>
+
+            {{ form.source_file }}
+
+            {% for error in form.source_file.errors %}
+                <div class="text-danger mt-1 small">
+                    {{ error }}
+                </div>
+            {% endfor %}
+
+            <p class="note-field-help mt-1">
+                Supported formats: <strong>.pdf</strong>, <strong>.png</strong>, <strong>.jpg</strong>, <strong>.wav</strong>, <strong>.mp3</strong>, <strong>.m4a</strong>, <strong>.ogg</strong>, <strong>.txt</strong>, <strong>.md</strong>. Text will be automatically extracted/transcribed.
+            </p>
+        </div>
+
+        <div class="mb-3">
+            <label
+                class="form-label fw-bold"
+                for="{{ form.original_text.id_for_label }}"
+            >
+                Or Enter / Edit Note Text Directly
+            </label>
+
+            {{ form.original_text }}
+
+            {% for error in form.original_text.errors %}
+                <div class="text-danger mt-2 small">
+                    {{ error }}
+                </div>
+            {% endfor %}
+
+            <p class="note-field-help">
+                The submitted text is preserved as the immutable evidence source
+                for future extraction and evidence-offset validation.
+            </p>
+        </div>
+
+        <div class="note-form-actions">
+            <button class="btn btn-primary" type="submit">
+                Save new note version
+            </button>
+
+            <a
+                class="btn btn-outline-secondary"
+                href="{% url 'dashboard:patient_detail' patient_id=patient.pk %}"
+            >
+                Cancel
+            </a>
+        </div>
+    </form>
+</section>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}Access denied | Mirai Clinical{% endblock %}
+{% block breadcrumb_label %}Access denied{% endblock %}
+
+{% block content %}
+<section class="panel placeholder-panel">
+    <span class="placeholder-symbol" aria-hidden="true">!</span>
+
+    <p class="eyebrow">PERMISSION REQUIRED</p>
+
+    <h1>Access denied</h1>
+
+    <p class="placeholder-description">
+        Your account does not have permission to view this page.
+        Contact the application administrator if access should be granted.
+    </p>
+
+    <a class="btn btn-primary" href="{% url 'dashboard:home' %}">
+        Return to dashboard
+    </a>
+</section>
+{% endblock %}
