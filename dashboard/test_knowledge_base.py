@@ -325,6 +325,92 @@ class KnowledgeBaseTests(TestCase):
         self.assertTrue(configuration.is_active)
         self.assertEqual(configuration.activated_by, self.admin)
 
+    @patch("dashboard.extraction.groq_provider.GroqExtractionProvider")
+    def test_groq_connection_test_uses_saved_key_and_model_with_synthetic_input(
+        self,
+        mock_provider_class,
+    ):
+        mock_provider = mock_provider_class.return_value
+        mock_provider.extract.return_value = {
+            "items": [],
+            "needs_review": True,
+            "review_reasons": ["Synthetic provider test only."],
+        }
+
+        response = self.client.post(
+            reverse("dashboard:settings"),
+            {
+                "provider": "groq",
+                "model": "llama-3.3-70b-versatile",
+                "temperature": "0",
+                "max_tokens": "1024",
+                "api_key": "gsk-synthetic-test-key",
+                "action": "test",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        configuration = AIConfiguration.objects.get()
+        self.assertEqual(configuration.last_test_status, "passed")
+        self.assertEqual(configuration.model, "llama-3.3-70b-versatile")
+        self.assertEqual(len(configuration.tested_fingerprint), 64)
+        mock_provider_class.assert_called_once_with(
+            api_key="gsk-synthetic-test-key",
+            model="llama-3.3-70b-versatile",
+        )
+        test_note = mock_provider.extract.call_args.args[0]
+        self.assertIn("Synthetic provider connectivity test", test_note)
+        self.assertNotIn("AI-PROC-001", test_note)
+
+        activated = self.client.post(
+            reverse("dashboard:settings"),
+            {
+                "provider": "groq",
+                "model": "llama-3.3-70b-versatile",
+                "temperature": "0",
+                "max_tokens": "1024",
+                "api_key": "********",
+                "action": "activate",
+            },
+        )
+        self.assertEqual(activated.status_code, 200)
+        configuration.refresh_from_db()
+        self.assertTrue(configuration.is_active)
+        self.assertEqual(configuration.activated_by, self.admin)
+
+    def test_ai_configuration_cannot_activate_after_tested_values_change(self):
+        self.client.post(
+            reverse("dashboard:settings"),
+            {
+                "provider": "synthetic",
+                "model": "local-synthetic-v1",
+                "temperature": "0",
+                "max_tokens": "1024",
+                "action": "test",
+            },
+        )
+        configuration = AIConfiguration.objects.get()
+        self.assertEqual(configuration.last_test_status, "passed")
+
+        response = self.client.post(
+            reverse("dashboard:settings"),
+            {
+                "provider": "synthetic",
+                "model": "local-synthetic-v1",
+                "temperature": "0.5",
+                "max_tokens": "1024",
+                "action": "activate",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Configuration values or credentials changed")
+        configuration.refresh_from_db()
+        self.assertFalse(configuration.is_active)
+        self.assertEqual(configuration.last_test_status, "not_tested")
+        self.assertEqual(configuration.tested_fingerprint, "")
+        self.assertFalse(AIConfiguration.objects.filter(is_active=True).exists())
+
     def test_ai_settings_does_not_activate_live_provider_without_local_test(self):
         response = self.client.post(
             reverse("dashboard:settings"),
