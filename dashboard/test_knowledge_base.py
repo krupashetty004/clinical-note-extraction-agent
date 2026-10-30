@@ -139,6 +139,7 @@ class KnowledgeBaseTests(TestCase):
             "Title (A-Z)",
         )
 
+    @override_settings(DEBUG=True, NEON_OBJECT_STORAGE_ENABLED=False)
     def test_pdf_upload_extracts_local_text_into_inactive_review_draft(self):
         response = self.client.post(
             reverse("dashboard:knowledge_document_new"),
