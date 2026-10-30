@@ -406,6 +406,8 @@ def main(argv: list[str] | None = None) -> int:
         "meets_10_specialty_target": report["specialty_target_at_least_10_met"],
         "annotation_queue_created": report["annotation_queue_created"],
         "annotation_queue_specialties": report["annotation_queue_specialty_count"],
+        "minimum_specialties_required": report["annotation_queue_minimum_specialties_required"],
+        "minimum_specialty_coverage_met": report["annotation_queue_meets_minimum_specialties"],
         "annotation_queue_is_gold_labelled": False,
         "report_markdown": str(args.reports_dir / "dataset_quality_report.md"),
         "report_json": str(args.reports_dir / "dataset_quality_report.json"),
