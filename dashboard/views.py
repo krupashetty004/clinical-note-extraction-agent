@@ -28,6 +28,8 @@ from dashboard.forms import (
 )
 
 from dashboard.access import role_required
+from dashboard.provider_config import ai_configuration_fingerprint
+
 from dashboard.models import (
     AIConfiguration,
     ClinicalNote,
@@ -1103,26 +1105,6 @@ def knowledge_document_edit(request: HttpRequest, doc_id: int) -> HttpResponse:
     )
 
 
-def _ai_configuration_fingerprint(configuration: AIConfiguration) -> str:
-    """Fingerprint all values that affect the provider connection test.
-
-    The credential itself is never persisted in the fingerprint; only its
-    one-way SHA-256 digest is included.
-    """
-    api_key = configuration.get_api_key() or os.environ.get("GROQ_API_KEY", "").strip()
-    payload = {
-        "provider": configuration.provider,
-        "model": configuration.model,
-        "temperature": format(configuration.temperature, ".2f"),
-        "max_tokens": configuration.max_tokens,
-        "api_key_sha256": hashlib.sha256(api_key.encode("utf-8")).hexdigest()
-        if api_key else "",
-    }
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
-
-
 def _test_ai_configuration(configuration: AIConfiguration) -> tuple[str, str]:
     """Test only with a fixed synthetic note; never submit user/patient data."""
     if configuration.provider == "synthetic":
@@ -1224,7 +1206,7 @@ def settings_page(request: HttpRequest) -> HttpResponse:
                     configuration.last_test_result = result_text
                     configuration.tested_at = timezone.now()
                     configuration.tested_fingerprint = (
-                        _ai_configuration_fingerprint(configuration)
+                        ai_configuration_fingerprint(configuration)
                         if status == "passed"
                         else ""
                     )
@@ -1232,7 +1214,7 @@ def settings_page(request: HttpRequest) -> HttpResponse:
                     test_result = result_text
 
                 elif action == "activate":
-                    current_fingerprint = _ai_configuration_fingerprint(configuration)
+                    current_fingerprint = ai_configuration_fingerprint(configuration)
                     test_matches_current_configuration = (
                         configuration.last_test_status == "passed"
                         and configuration.tested_fingerprint
