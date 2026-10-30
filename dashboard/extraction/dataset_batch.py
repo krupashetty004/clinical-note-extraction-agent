@@ -32,6 +32,7 @@ DEFAULT_BATCH_OUTPUT_DIR = LOCAL_DATA_ROOT / "runs" / "mtsamples"
 PREDICTIONS_FILENAME = "predictions.jsonl"
 OPERATIONS_FILENAME = "operations.jsonl"
 REPORT_FILENAME = "report.json"
+CHECKPOINT_FILENAME = "results.jsonl"
 LOCAL_PROVIDER_ID = "local-clinical-rules-v1"
 
 
@@ -270,9 +271,13 @@ def run_dataset_batch(
     predictions_path = output_root / PREDICTIONS_FILENAME
     operations_path = output_root / OPERATIONS_FILENAME
     report_path = output_root / REPORT_FILENAME
+    checkpoint_path = output_root / CHECKPOINT_FILENAME
     output_root.mkdir(parents=True, exist_ok=True)
 
-    outputs_exist = predictions_path.exists() or operations_path.exists()
+    outputs_exist = any(
+        path.exists()
+        for path in (predictions_path, operations_path, checkpoint_path)
+    )
     if resume and overwrite:
         raise DatasetBatchError("--resume and --overwrite cannot be used together.")
     if outputs_exist and not (resume or overwrite):
@@ -283,25 +288,33 @@ def run_dataset_batch(
 
     predictions: list[dict[str, Any]] = []
     operations: list[dict[str, Any]] = []
+    checkpoints: list[dict[str, Any]] = []
     completed_ids: set[str] = set()
     if resume:
-        if not predictions_path.is_file() or not operations_path.is_file():
+        if not checkpoint_path.is_file():
             raise DatasetBatchError(
-                "Resume requires both predictions.jsonl and operations.jsonl."
+                "Resume requires the atomic results.jsonl checkpoint file."
             )
-        predictions = _read_jsonl(predictions_path)
-        operations = _read_jsonl(operations_path)
-        prediction_ids = {row["case_id"] for row in predictions}
-        operation_ids = {row["case_id"] for row in operations}
-        if prediction_ids != operation_ids:
-            raise DatasetBatchError(
-                "Prediction and operations files do not contain the same case IDs."
-            )
-        if not prediction_ids.issubset(selected_ids):
+        checkpoints = _read_jsonl(checkpoint_path)
+        for row in checkpoints:
+            prediction = row.get("prediction")
+            operation = row.get("operation")
+            if not isinstance(prediction, dict) or not isinstance(operation, dict):
+                raise DatasetBatchError(
+                    "A checkpoint row is missing its prediction or operation object."
+                )
+            case_id = row["case_id"]
+            if prediction.get("case_id") != case_id or operation.get("case_id") != case_id:
+                raise DatasetBatchError(
+                    "A checkpoint row contains mismatched case IDs."
+                )
+            predictions.append(prediction)
+            operations.append(operation)
+        completed_ids = {row["case_id"] for row in checkpoints}
+        if not completed_ids.issubset(selected_ids):
             raise DatasetBatchError(
                 "Existing batch outputs contain IDs outside the selected input records."
             )
-        completed_ids = prediction_ids
 
     previously_processed_count = len(predictions)
     extraction_provider = LocalClinicalExtractionProvider()
@@ -339,18 +352,29 @@ def run_dataset_batch(
                 },
             )()
         latency_ms = (time.perf_counter() - started) * 1000.0
-        predictions.append(_prediction_from_result(record, workflow_result))
-        operations.append(
-            _operation_from_result(
-                record,
-                workflow_result,
-                latency_ms=latency_ms,
-            )
+        prediction = _prediction_from_result(record, workflow_result)
+        operation = _operation_from_result(
+            record,
+            workflow_result,
+            latency_ms=latency_ms,
         )
-        # Persist after every record so a local interruption can be resumed.
-        _write_jsonl_atomic(predictions_path, predictions)
-        _write_jsonl_atomic(operations_path, operations)
+        predictions.append(prediction)
+        operations.append(operation)
+        checkpoints.append(
+            {
+                "case_id": record.record_id,
+                "prediction": prediction,
+                "operation": operation,
+            }
+        )
+        # One atomic checkpoint keeps predictions and operations in sync
+        # if the batch is interrupted between records.
+        _write_jsonl_atomic(checkpoint_path, checkpoints)
         completed_ids.add(record.record_id)
+
+    # Materialize the separate, convenient projections from the checkpoint.
+    _write_jsonl_atomic(predictions_path, predictions)
+    _write_jsonl_atomic(operations_path, operations)
 
     queue_readiness = annotation_readiness(loaded)
     gold_cases, evaluation_input = build_evaluation_gold_cases(loaded)
