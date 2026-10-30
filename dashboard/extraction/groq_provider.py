@@ -302,6 +302,7 @@ only; no Markdown or commentary."""
 _STRICT_JSON_SCHEMA_MODELS = frozenset({
     "openai/gpt-oss-20b",
     "openai/gpt-oss-120b",
+    "qwen/qwen3.8-27b",
 })
 
 _VERIFICATION_RESPONSE_FORMAT: dict[str, Any] = {
