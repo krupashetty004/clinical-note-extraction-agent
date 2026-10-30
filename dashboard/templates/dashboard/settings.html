@@ -7,7 +7,7 @@
 <div class="container-fluid py-4">
     <div class="mb-4">
         <h1 class="h3 mb-1">AI settings</h1>
-        <p class="text-muted mb-0">Configure only approved providers and models. Credentials remain deployment secrets and are never stored here.</p>
+        <p class="text-muted mb-0">Configure approved providers and models. API keys are encrypted at rest, shown only as a masked placeholder, and never logged. Gemini execution is not available in this build.</p>
     </div>
 
     {% if form.non_field_errors %}
@@ -23,7 +23,7 @@
                 {% csrf_token %}
                 <div class="card-body">
                     <h2 class="h5">Configuration draft</h2>
-                    <p class="small text-muted">Synthetic testing is local-only in this build. Live provider calls are disabled, so no clinical or other user data is sent to a provider from this screen.</p>
+                    <p class="small text-muted">Test connection uses a fixed synthetic note only. No patient data is sent by this test. External Doctor-note processing remains separately approval-gated.</p>
                     {% for field in form %}
                     <div class="mb-3">
                         <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
