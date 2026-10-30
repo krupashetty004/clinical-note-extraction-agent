@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - local/ai-benchmark-pipeline
+      - work/mirai-stage11-dataset-integrity
   pull_request:
     branches:
       - main
