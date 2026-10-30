@@ -136,15 +136,32 @@ class ClinicalNoteForm(forms.ModelForm):
 
         if uploaded:
             try:
-                extracted_text, source_type, _ = extract_uploaded_source(uploaded)
+                extracted_text, source_type, ingestion_status = extract_uploaded_source(uploaded)
                 extracted_text = (extracted_text or "").strip()
                 if extracted_text:
-                    if text:
-                        text = f"{text}\n\n{extracted_text}"
-                    else:
-                        text = extracted_text
+                    combined_text = (
+                        f"{text}\n\n{extracted_text}" if text else extracted_text
+                    )
+                    if ingestion_status == "needs_review":
+                        # Keep a draft transcription visible in the textarea,
+                        # but require a second submit after the doctor reviews it.
+                        self.data = self.data.copy()
+                        self.data["original_text"] = combined_text
+                        cleaned_data["original_text"] = combined_text
+                        self.add_error(
+                            "source_file",
+                            "A draft transcription was generated. Review and correct "
+                            "the text in the note editor, then submit again without "
+                            "re-uploading the source file. The note has not been saved.",
+                        )
+                        return cleaned_data
+                    text = combined_text
             except KnowledgeIngestionError as exc:
                 self.add_error("source_file", str(exc))
+
+        if self.has_error("source_file"):
+            cleaned_data["original_text"] = text
+            return cleaned_data
 
         if not text:
             raise forms.ValidationError(
