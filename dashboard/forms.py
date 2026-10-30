@@ -299,8 +299,16 @@ class KnowledgeDocumentForm(forms.ModelForm):
     source_file = forms.FileField(
         required=False,
         label="Source file",
-        help_text="Supported locally: .txt, .md, .pdf, .png, .jpg, .jpeg. Maximum 10 MB.",
-        widget=forms.ClearableFileInput(attrs={"class": "form-control", "accept": ".txt,.md,.pdf,.png,.jpg,.jpeg"}),
+        help_text=(
+            "Supported: .txt, .md, .pdf, .png, .jpg, .jpeg, .wav, .mp3, .m4a, "
+            ".ogg. Maximum 10 MB. OCR/audio transcripts remain inactive until reviewed."
+        ),
+        widget=forms.ClearableFileInput(
+            attrs={
+                "class": "form-control",
+                "accept": ".txt,.md,.pdf,.png,.jpg,.jpeg,.wav,.mp3,.m4a,.ogg",
+            }
+        ),
     )
     priority = forms.IntegerField(
         min_value=0,
@@ -351,20 +359,42 @@ class KnowledgeDocumentForm(forms.ModelForm):
         uploaded = self.cleaned_data.get("source_file")
         if not uploaded:
             return uploaded
-        allowed = {".txt", ".md", ".pdf", ".png", ".jpg", ".jpeg"}
+        allowed = {
+            ".txt", ".md", ".pdf", ".png", ".jpg", ".jpeg",
+            ".wav", ".mp3", ".m4a", ".ogg",
+        }
         suffix = Path(uploaded.name).suffix.lower()
         if suffix not in allowed:
-            raise forms.ValidationError("Unsupported file type. Use TXT, Markdown, PDF, PNG, or JPEG.")
+            raise forms.ValidationError(
+                "Unsupported file type. Use TXT, Markdown, PDF, PNG, JPEG, WAV, MP3, M4A, or OGG."
+            )
         if uploaded.size > 10 * 1024 * 1024:
             raise forms.ValidationError("Files must be 10 MB or smaller.")
-        first_bytes = uploaded.read(8)
+        first_bytes = uploaded.read(16)
         uploaded.seek(0)
         if suffix == ".pdf" and not first_bytes.startswith(b"%PDF"):
             raise forms.ValidationError("The uploaded file is not a valid PDF.")
         if suffix in {".jpg", ".jpeg"} and not first_bytes.startswith(b"\xff\xd8\xff"):
             raise forms.ValidationError("The uploaded file is not a valid JPEG.")
-        if suffix == ".png" and first_bytes != b"\x89PNG\r\n\x1a\n":
+        if suffix == ".png" and first_bytes[:8] != b"\x89PNG\r\n\x1a\n":
             raise forms.ValidationError("The uploaded file is not a valid PNG.")
+        if suffix == ".wav" and not (
+            first_bytes[:4] == b"RIFF" and first_bytes[8:12] == b"WAVE"
+        ):
+            raise forms.ValidationError("The uploaded file is not a valid WAV audio file.")
+        if suffix == ".ogg" and first_bytes[:4] != b"OggS":
+            raise forms.ValidationError("The uploaded file is not a valid OGG audio file.")
+        if suffix == ".m4a" and first_bytes[4:8] != b"ftyp":
+            raise forms.ValidationError("The uploaded file is not a valid M4A audio file.")
+        if suffix == ".mp3" and not (
+            first_bytes.startswith(b"ID3")
+            or (
+                len(first_bytes) >= 2
+                and first_bytes[0] == 0xFF
+                and (first_bytes[1] & 0xE0) == 0xE0
+            )
+        ):
+            raise forms.ValidationError("The uploaded file is not a valid MP3 audio file.")
         return uploaded
 
     def clean_title(self):
