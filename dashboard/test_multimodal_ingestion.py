@@ -181,7 +181,7 @@ class MultimodalIngestionTests(SimpleTestCase):
     def test_knowledge_document_form_accepts_audio_for_review_ingestion(self):
         audio = SimpleUploadedFile(
             "synthetic-dictation.wav",
-            b"RIFF" + b"\\x24\\x00\\x00\\x00" + b"WAVE" + b"synthetic-audio",
+            b"RIFF" + bytes([0, 0, 0, 0]) + b"WAVE" + b"data",
             content_type="audio/wav",
         )
         form = KnowledgeDocumentForm(
