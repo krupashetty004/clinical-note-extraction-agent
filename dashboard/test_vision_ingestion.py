@@ -5,6 +5,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, override_settings
 
 from dashboard.knowledge_ingestion import _extract_image_via_vision_llm
+from dashboard.provider_config import ai_configuration_fingerprint
 
 
 class VisionIngestionTests(SimpleTestCase):
@@ -24,6 +25,11 @@ class VisionIngestionTests(SimpleTestCase):
             .first.return_value
         ) = config
 
+        config.last_test_status = "passed"
+        config.tested_fingerprint = ai_configuration_fingerprint(
+            config,
+            api_key="unit-test-key",
+        )
         return config
 
     @override_settings(
