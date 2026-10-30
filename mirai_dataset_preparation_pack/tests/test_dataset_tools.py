@@ -48,6 +48,7 @@ class AnalyzerTests(unittest.TestCase):
                 tmp_path / "annotations",
                 tmp_path / "reports",
                 annotation_limit=3,
+                minimum_specialties=3,
             )
             self.assertEqual(report["source_rows_loaded"], 5)
             self.assertEqual(report["rows_with_nonempty_transcription"], 4)
@@ -67,6 +68,66 @@ class AnalyzerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(FileNotFoundError):
                 ANALYZER.load_csv(Path(tmp) / "missing.csv")
+
+    def test_annotation_queue_enforces_minimum_specialty_coverage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            source = self.write_csv(tmp_path)
+            with self.assertRaisesRegex(ValueError, "at least 4 are required"):
+                ANALYZER.analyze(
+                    source,
+                    tmp_path / "prepared",
+                    tmp_path / "annotations",
+                    tmp_path / "reports",
+                    annotation_limit=3,
+                    minimum_specialties=4,
+                )
+
+    def test_annotation_queue_accepts_required_specialty_coverage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            source = self.write_csv(tmp_path)
+            report = ANALYZER.analyze(
+                source,
+                tmp_path / "prepared",
+                tmp_path / "annotations",
+                tmp_path / "reports",
+                annotation_limit=3,
+                minimum_specialties=3,
+            )
+            self.assertEqual(report["annotation_queue_specialty_count"], 3)
+            self.assertTrue(report["annotation_queue_meets_minimum_specialties"])
+
+    def test_invalid_minimum_specialty_coverage_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            source = self.write_csv(tmp)
+            for invalid_value in (0, -1, True):
+                with self.subTest(value=invalid_value):
+                    with self.assertRaisesRegex(ValueError, "minimum_specialties"):
+                        ANALYZER.analyze(
+                            source,
+                            tmp_path / "prepared",
+                            tmp_path / "annotations",
+                            tmp_path / "reports",
+                            annotation_limit=3,
+                            minimum_specialties=invalid_value,
+                        )
+
+
+    def test_default_outputs_stay_in_ignored_local_workspace(self):
+        self.assertEqual(
+            ANALYZER.DEFAULT_PREPARED,
+            ANALYZER.PACKAGE_ROOT.parent / ".dataset_working" / "prepared",
+        )
+        self.assertEqual(
+            ANALYZER.DEFAULT_ANNOTATIONS,
+            ANALYZER.PACKAGE_ROOT.parent / ".dataset_working" / "annotations",
+        )
+        self.assertEqual(
+            ANALYZER.DEFAULT_REPORTS,
+            ANALYZER.PACKAGE_ROOT.parent / ".dataset_working" / "reports",
+        )
 
 
 class AnnotationValidatorTests(unittest.TestCase):

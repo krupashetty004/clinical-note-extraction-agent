@@ -6,6 +6,7 @@ when an external AI API is not active or configured.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from dashboard.extraction.diagnosis_coding import DiagnosisCodingBatch
@@ -86,7 +87,12 @@ CLINICAL_TERMS: dict[str, list[str]] = {
 class LocalClinicalExtractionProvider:
     """Extract clinical entities strictly grounded in the original source note."""
 
-    def extract(self, original_note: str) -> dict[str, Any]:
+    def extract(
+        self,
+        original_note: str,
+        *,
+        reference_context: Sequence[Mapping[str, Any]] = (),
+    ) -> dict[str, Any]:
         if not isinstance(original_note, str):
             raise TypeError("original_note must be a string.")
 
@@ -342,6 +348,8 @@ class LocalClinicalVerificationProvider:
         original_note: str,
         extraction: ExtractionResult,
         coding: DiagnosisCodingBatch,
+        *,
+        reference_context: Sequence[Mapping[str, Any]] = (),
     ) -> dict[str, Any]:
         if not isinstance(original_note, str):
             raise TypeError("original_note must be a string.")

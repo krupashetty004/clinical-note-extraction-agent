@@ -68,6 +68,17 @@ class ProcessingRunViewTests(TestCase):
             created_by=cls.doctor_a,
             status=ClinicalProcessingRun.Status.NEEDS_REVIEW,
             extraction_result={"items": []},
+            knowledge_retrieval_status="retrieved",
+            knowledge_references=[
+                {
+                    "document_id": 17,
+                    "title": "Synthetic knowledge guideline",
+                    "version": 2,
+                    "chunk_index": 1,
+                    "score": 0.8,
+                    "source_citations": [],
+                }
+            ],
             review_reasons=["Synthetic review test."],
         )
 
@@ -118,6 +129,9 @@ class ProcessingRunViewTests(TestCase):
         self.assertContains(response, "Processing run #")
         self.assertContains(response, "Synthetic Run View Patient")
         self.assertContains(response, "Synthetic review test.")
+        self.assertContains(response, "Knowledge-base reference context")
+        self.assertContains(response, "Synthetic knowledge guideline")
+        self.assertContains(response, "retrieved")
         self.assertContains(response, "Save review decision")
 
 

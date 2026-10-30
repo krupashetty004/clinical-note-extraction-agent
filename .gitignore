@@ -226,3 +226,7 @@ __marimo__/
 # Generated deployment assets and uploaded files
 /staticfiles/
 /media/
+
+# Local MTSamples source data and generated note-level outputs (never commit)
+mirai_dataset_preparation_pack/data/external/mtsamples/raw/*.csv
+.dataset_working/

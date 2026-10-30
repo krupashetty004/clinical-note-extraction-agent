@@ -22,45 +22,80 @@ MTSamples is a useful real-text, multi-specialty corpus for ingestion testing, s
 
 ## One-time setup on Windows
 
-Place this folder in your project root as `dataset-preparation` (or another non-conflicting name). Do not merge this package into the existing `data/` folder; your repository already has local data files that must be preserved.
+The dataset-preparation tools are already part of this repository. From the repository root, place the supplied CSV at:
 
-### Option A — Kaggle CLI already installed and authenticated locally
+`mirai_dataset_preparation_pack\\data\\external\\mtsamples\\raw\\mtsamples.csv`
 
-From PowerShell inside this package folder:
+PowerShell:
 
 ```powershell
-.\scripts\download_mtsamples.ps1
+New-Item -ItemType Directory -Force .\\mirai_dataset_preparation_pack\\data\\external\\mtsamples\\raw | Out-Null
+Copy-Item "C:\\path\\to\\mtsamples.csv" .\\mirai_dataset_preparation_pack\\data\\external\\mtsamples\\raw\\mtsamples.csv
 ```
 
-The script checks for existing files and refuses to overwrite them. It uses locally configured Kaggle CLI authentication if available; it never prints credentials. It does not install software or ask you to paste tokens.
+Replace the source path with the location of your downloaded CSV. Do not add the raw CSV to Git. This repository is public, and the CSV contains clinical narratives.
 
-### Option B — Manual browser download
+### Analyze and prepare the CSV
 
-1. Sign in to Kaggle in your browser and open https://www.kaggle.com/datasets/tboyle10/medicaltranscriptions/data
-2. Download the dataset ZIP.
-3. Extract the archive and copy the original `mtsamples.csv` into:
-   `data\external\mtsamples\raw\mtsamples.csv`
-4. Keep the downloaded ZIP locally if needed for provenance, but do not put credentials in this folder.
-
-### Analyze and prepare the downloaded file
-
-This package uses only Python's standard library; no package installation is needed.
+The analyzer uses only Python's standard library. No API call or AI provider is used.
 
 ```powershell
-python .\scripts\analyze_mtsamples.py
+python .\\mirai_dataset_preparation_pack\\scripts\\analyze_mtsamples.py
 ```
 
-Expected outputs, after the raw CSV is supplied:
-
-- `reports\dataset_quality_report.md` — counts, missingness, specialties, duplicates, suitability checks.
-- `reports\dataset_quality_report.json` — machine-readable report.
-- `data\external\mtsamples\prepared\records.jsonl` — normalized records with source provenance, deterministic splits, and explicit `gold_annotations: null`.
-- `data\external\mtsamples\annotations\annotation_template_100.jsonl` — up to 100 distinct notes selected breadth-first across specialties for human labelling. Each starts with `annotation_complete: false`; it is not gold data.
-
-Validate annotations after qualified reviewers complete the template:
+The default command requires at least 10 specialties in the 100-record annotation queue. A different threshold can be set explicitly:
 
 ```powershell
-python .\scripts\validate_annotations.py --input .\data\external\mtsamples\annotations\annotation_template_100.jsonl --require-complete
+python .\\mirai_dataset_preparation_pack\\scripts\\analyze_mtsamples.py --minimum-specialties 10
+```
+
+Generated note-level files are written under the Git-ignored repository-root `.dataset_working\\` directory so they do not overwrite the tracked annotation template or get committed accidentally:
+
+- `.dataset_working\\reports\\dataset_quality_report.md` — aggregate counts, missingness, specialty distribution, duplicate checks and suitability notes.
+- `.dataset_working\\reports\\dataset_quality_report.json` — machine-readable audit report including the raw CSV SHA-256.
+- `.dataset_working\\prepared\\records.jsonl` — normalized records with provenance and `gold_annotations: null`.
+- `.dataset_working\\annotations\\annotation_template_100.jsonl` — 100 distinct notes selected deterministically across specialties. All begin unannotated.
+
+The full note text exists only in local working files. The reports do not include note text. Review local data handling before any external processing. MTSamples specialty and keyword fields are not gold entity labels.
+
+### Use the prepared queue in the clinical extraction workflow
+
+The Doctor annotation page uses the generated local queue automatically. The saved draft is kept in `.dataset_working\\annotations\\.annotation_working_queue.jsonl`; the tracked template is not overwritten.
+
+For ICD-10 coding, import the supplied reference into your local Django database once if the table is empty:
+
+```powershell
+python manage.py import_icd10 --source data\\reference\\icd10cm-codes-2027.txt --apply
+```
+
+Check that prepared records and the annotation queue are discoverable:
+
+```powershell
+python manage.py dataset_status
+```
+
+Run the 100-note queue through the application's **local** extraction, ICD-10 retrieval, independent verification and reconciliation workflow:
+
+```powershell
+python manage.py process_mtsamples_dataset --limit 100
+```
+
+This command never selects Groq, Gemini, or another external provider. It does not create Patient, Encounter, ClinicalNote, or ClinicalProcessingRun records. It stores note-level results only under the ignored `.dataset_working\\runs\\mtsamples\\` directory:
+
+- `predictions.jsonl` — extracted entities, original-note evidence/offsets, candidate codes and source identifiers.
+- `operations.jsonl` — per-note status, latency, attempts, provider identity and safe failure codes.
+- `results.jsonl` — atomic checkpoint for resumable execution.
+- `manifest.json` — source CSV/queue SHA-256 and selected record IDs; prevents resuming stale predictions against a changed input file.
+- `report.json` — aggregate counts and explicit evaluation status.
+
+Use `--resume` to continue from the checkpoint after interruption, or `--overwrite` to start the batch outputs again. Do not commit these files because they contain note-linked extraction content.
+
+The queue contains no trusted clinical gold labels by default. The batch report therefore marks clinical accuracy as **NOT EVALUATED** unless all selected records have qualified, independently sourced labels and the evaluation checks pass.
+
+Validate the generated queue after trusted annotations have actually been supplied:
+
+```powershell
+python .\\mirai_dataset_preparation_pack\\scripts\\validate_annotations.py --input .\\.dataset_working\\annotations\\annotation_template_100.jsonl --require-complete
 ```
 
 Show queue progress without treating unreviewed records as gold:

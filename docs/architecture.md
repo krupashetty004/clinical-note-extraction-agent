@@ -240,4 +240,40 @@ Before a real deployment:
 
 ---
 
+## 10. Implementation Snapshot — 30 October 2026
+
+The current feature-branch implementation has connected a first lexical RAG path to the Doctor note-processing service. This snapshot describes the code that exists now; it does not mark the full proposed architecture above as complete.
+
+- The service builds a bounded keyword query from the original note and retrieves up to three passages from active knowledge documents whose ingestion status is `manual` or `published`.
+- Uploaded documents start inactive and `needs_review`. They are excluded from retrieval until explicitly activated/published through the knowledge-document review page.
+- Retrieval passes reference passages separately from `original_note` to compatible providers. Provider instructions explicitly prohibit using a reference passage as evidence for a clinical claim.
+- Extraction and verification evidence spans are still validated against the original note only. The processing run records retrieved document IDs, titles, versions, citations, chunk indexes, source offsets, scores, and retrieval status; it does not duplicate the full reference passage text into the trace.
+- The processing-run page and JSON export expose this reference trace.
+- Retrieval is currently lexical and query-term based. Knowledge-document embeddings, pgvector/vector search, reranking, and evaluation of retrieval relevance are **not yet implemented**.
+- The offline MTSamples batch command remains a separate local benchmark path. It uses deterministic local extraction/verification and does not currently include RAG.
+- The deterministic local extraction provider accepts the context contract but does not use references to generate additional findings. The Groq adapter accepts references as separate context, but Doctor-note external use remains disabled unless `MIRAI_EXTERNAL_CLINICAL_DATA_APPROVED=1` is explicitly set after the required privacy/security approval, in addition to the existing provider opt-in and key.
+
+### AI provider configuration snapshot
+
+- The Administrator settings page stores the selected provider/model and generation parameters; a configured Groq key is encrypted at rest and rendered only as a masked placeholder.
+- Groq model choices are currently `openai/gpt-oss-20b`, `openai/gpt-oss-120b`, and `qwen/qwen3.8-27b`. Deprecated Llama model identifiers are not offered.
+- The connection test uses a fixed synthetic note, never a patient note. The current test verifies Groq extraction output against the application's schema and does not establish clinical quality.
+- A fingerprint binds a successful test to the exact provider, model, temperature, completion-token limit, and credential digest. Activation is blocked when those settings change after testing.
+- The active configuration's credential/model/temperature/token limit are used by both extraction and verification adapters. Unsupported Gemini activation is blocked; the workflow does not silently change providers.
+- Actual Doctor-note processing through Groq requires both the local provider opt-in and the separate `MIRAI_EXTERNAL_CLINICAL_DATA_APPROVED=1` deployment gate. Keep that approval gate disabled until Mirai Labs has completed the formal privacy/security review. With a selected Groq configuration and a missing gate/key, the request is blocked with a visible user message.
+
+### Ingestion and external image processing boundary
+
+- Local image OCR is attempted first. The optional Groq vision path is gated by both the Groq environment opt-in and `MIRAI_EXTERNAL_CLINICAL_DATA_APPROVED=1`; it also requires an active tested Groq configuration using the configured vision-capable model `qwen/qwen3.8-27b`.
+- The image path does not use raw environment-key fallback or Gemini. A non-vision active model is not silently substituted.
+- Scanned PDFs are rendered by PyPDFium2 (pinned 5.14.0) and passed to local Tesseract OCR. A configured and explicitly approved Groq vision fallback is available for up to 10 scanned pages per PDF. The overall upload limit is 10 MB; the PDF page-count limit is 100.
+- Audio files (.wav, .mp3, .m4a, .ogg) are transcribed with the dedicated Groq `whisper-large-v3-turbo` endpoint only when the Groq opt-in, external clinical-data approval, and matching tested active credential are all present. This is a separate speech model, not a silent replacement for the selected extraction model.
+- OCR and audio outputs are drafts. The clinical-note form places the transcript in the editor and requires doctor review/correction plus a second submission without the file before saving. Knowledge-base uploads are inactive and `needs_review` until corrected and explicitly published.
+- No filename or placeholder text is treated as a transcript. When no permitted OCR/transcription method is available, ingestion fails with a user-facing explanation.
+- Local scanned-PDF OCR requires the Tesseract system executable on `PATH`. PyPDFium2 5.14.0 is available under Apache-2.0/BSD-3-Clause and bundles PDFium binaries with their additional dependency licenses; Pillow 13.0.0 is MIT-CMU.
+- The public login page no longer displays demo credentials. The local app entry point runs migrations only and creates no accounts. Provision a superuser explicitly and use least-privilege Doctor/Administrator groups for routine use.
+- Legacy hardcoded demo credentials existed in earlier public commits. Removing them from current files does not remove them from repository history; any accounts created with those credentials must be checked and rotated/disabled manually.
+
+These limitations must remain visible in project reporting. A passing CI suite validates automated code contracts; it does not establish retrieval quality, clinical accuracy, or deployment approval.
+
 **Status:** Proposed revised architecture. It is not evidence of implementation or formal scope/provider approval.

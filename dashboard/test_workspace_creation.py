@@ -114,8 +114,8 @@ class DoctorWorkspaceCreationTests(TestCase):
         self.assertIn("hypertension", note.original_text)
         self.assertIn("lisinopril", note.original_text)
 
-    def test_image_upload_without_tesseract_falls_back_gracefully(self):
-        """Image upload degrades gracefully without crashing when Tesseract is missing."""
+    def test_image_upload_without_tesseract_rejects_untranscribed_content(self):
+        """Unreadable images must not create notes from filename placeholders."""
         patient = Patient.objects.create(
             identifier="PAT-IMG-404",
             display_name="David Copperfield",
@@ -143,8 +143,8 @@ class DoctorWorkspaceCreationTests(TestCase):
             follow=True,
         )
         self.assertEqual(response.status_code, 200)
-        note = ClinicalNote.objects.get(encounter=encounter)
-        self.assertIn("Scanned Clinical Image", note.original_text)
+        self.assertContains(response, "No image transcription was produced")
+        self.assertFalse(ClinicalNote.objects.filter(encounter=encounter).exists())
 
     def test_permitted_doctor_can_delete_patient_and_clean_knowledge_base(self):
         """Creator doctor can delete patient, cleaning up notes and related knowledge-base citations."""

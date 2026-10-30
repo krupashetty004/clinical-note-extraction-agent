@@ -278,7 +278,7 @@ class AIConfiguration(models.Model):
     PROVIDER_CHOICES = (
         ("synthetic", "Local synthetic test provider"),
         ("groq", "Groq"),
-        ("gemini", "Google Gemini"),
+        ("gemini", "Google Gemini (adapter not implemented)"),
     )
 
     provider = models.CharField(max_length=32, choices=PROVIDER_CHOICES)
@@ -299,6 +299,7 @@ class AIConfiguration(models.Model):
     last_test_status = models.CharField(max_length=24, default="not_tested")
     last_test_result = models.CharField(max_length=255, blank=True, default="")
     tested_at = models.DateTimeField(null=True, blank=True)
+    tested_fingerprint = models.CharField(max_length=64, blank=True, default="")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -324,8 +325,8 @@ class AIConfiguration(models.Model):
             "synthetic": {"local-synthetic-v1"},
             "groq": {
                 "openai/gpt-oss-20b",
-                "llama-3.3-70b-versatile",
-                "llama-3.2-11b-vision-preview",
+                "openai/gpt-oss-120b",
+                "qwen/qwen3.8-27b",
             },
             "gemini": {
                 "gemini-1.5-flash",
@@ -430,6 +431,19 @@ class ClinicalProcessingRun(models.Model):
     extraction_result = models.JSONField(null=True, blank=True)
     coding_result = models.JSONField(null=True, blank=True)
     verification_result = models.JSONField(null=True, blank=True)
+    # Trace the approved reference passages supplied to the agent. This is
+    # metadata only; the retrieved text remains in the prompt at execution time.
+    knowledge_references = models.JSONField(default=list, blank=True)
+    knowledge_retrieval_status = models.CharField(
+        max_length=20,
+        default="not_attempted",
+        choices=(
+            ("not_attempted", "Not attempted"),
+            ("no_matches", "No matching references"),
+            ("retrieved", "References retrieved"),
+            ("unavailable", "Retrieval unavailable"),
+        ),
+    )
     item_dispositions = models.JSONField(default=list, blank=True)
     review_reasons = models.JSONField(default=list, blank=True)
     review_decision = models.CharField(

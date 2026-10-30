@@ -19,9 +19,12 @@ from typing import Any
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INPUT = PACKAGE_ROOT / "data" / "external" / "mtsamples" / "raw" / "mtsamples.csv"
-DEFAULT_PREPARED = PACKAGE_ROOT / "data" / "external" / "mtsamples" / "prepared"
-DEFAULT_ANNOTATIONS = PACKAGE_ROOT / "data" / "external" / "mtsamples" / "annotations"
-DEFAULT_REPORTS = PACKAGE_ROOT / "reports"
+# Keep generated note-level datasets and queues outside tracked/public paths.
+# The raw source CSV remains at DEFAULT_INPUT and must not be committed.
+LOCAL_DATA_ROOT = PACKAGE_ROOT.parent / ".dataset_working"
+DEFAULT_PREPARED = LOCAL_DATA_ROOT / "prepared"
+DEFAULT_ANNOTATIONS = LOCAL_DATA_ROOT / "annotations"
+DEFAULT_REPORTS = LOCAL_DATA_ROOT / "reports"
 SOURCE_URL = "https://www.kaggle.com/datasets/tboyle10/medicaltranscriptions/data"
 SOURCE_ID = "kaggle:tboyle10/medicaltranscriptions"
 
@@ -224,6 +227,7 @@ def report_markdown(report: dict[str, Any]) -> str:
         f"- **Specialties present:** {report['specialty_count_in_usable_records']}",
         f"- **At least 10 non-missing specialties:** {'YES' if report['specialty_target_at_least_10_met'] else 'NO'}",
         f"- **Annotation queue:** {report['annotation_queue_created']} records across {report['annotation_queue_specialty_count']} specialties; these are unannotated queue items, not gold labels.",
+        f"- **Minimum specialty coverage:** {report.get('annotation_queue_minimum_specialties_required', 10)} required; {'MET' if report.get('annotation_queue_meets_minimum_specialties', False) else 'NOT MET'}.",
         "",
         "## Columns detected",
         "",
@@ -260,7 +264,13 @@ def report_markdown(report: dict[str, Any]) -> str:
 
 def analyze(input_path: Path = DEFAULT_INPUT, prepared_dir: Path = DEFAULT_PREPARED,
             annotation_dir: Path = DEFAULT_ANNOTATIONS, reports_dir: Path = DEFAULT_REPORTS,
-            annotation_limit: int = 100) -> dict[str, Any]:
+            annotation_limit: int = 100, minimum_specialties: int = 10) -> dict[str, Any]:
+    """Prepare source records and refuse an under-covered annotation queue."""
+    if not isinstance(minimum_specialties, int) or isinstance(minimum_specialties, bool):
+        raise ValueError("minimum_specialties must be a positive integer.")
+    if minimum_specialties < 1:
+        raise ValueError("minimum_specialties must be a positive integer.")
+
     rows, columns, headers = load_csv(input_path)
     text_column = columns["text"]
     assert text_column is not None
@@ -331,9 +341,24 @@ def analyze(input_path: Path = DEFAULT_INPUT, prepared_dir: Path = DEFAULT_PREPA
 
     queue = choose_annotation_queue(distinct_records, max(0, annotation_limit))
     annotation_records = [make_annotation_record(r) for r in queue]
+    queue_specialty_count = len({
+        record["specialty"] for record in annotation_records if record["specialty"]
+    })
+    if annotation_limit > 0 and queue_specialty_count < minimum_specialties:
+        raise ValueError(
+            "The selected annotation queue covers "
+            f"{queue_specialty_count} specialties; at least "
+            f"{minimum_specialties} are required. Reduce the queue size only "
+            "for non-acceptance development tests, or use a broader source dataset."
+        )
+
     file_hash = hashlib.sha256(input_path.read_bytes()).hexdigest()
     report = build_report(input_path, rows, columns, headers, records, missing_counts,
                           duplicate_rows, text_lengths, file_hash, annotation_records)
+    report["annotation_queue_minimum_specialties_required"] = minimum_specialties
+    report["annotation_queue_meets_minimum_specialties"] = (
+        annotation_limit == 0 or queue_specialty_count >= minimum_specialties
+    )
 
     write_jsonl(prepared_dir / "records.jsonl", records)
     write_jsonl(annotation_dir / f"annotation_template_{annotation_limit}.jsonl", annotation_records)
@@ -352,11 +377,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--annotation-dir", type=Path, default=DEFAULT_ANNOTATIONS)
     parser.add_argument("--reports-dir", type=Path, default=DEFAULT_REPORTS)
     parser.add_argument("--annotation-limit", type=int, default=100)
+    parser.add_argument(
+        "--minimum-specialties",
+        type=int,
+        default=10,
+        help="Minimum number of represented specialties in the selected annotation queue (default: 10).",
+    )
     args = parser.parse_args(argv)
     if args.annotation_limit < 0:
         parser.error("--annotation-limit must be >= 0")
     try:
-        report = analyze(args.input, args.prepared_dir, args.annotation_dir, args.reports_dir, args.annotation_limit)
+        report = analyze(
+            args.input,
+            args.prepared_dir,
+            args.annotation_dir,
+            args.reports_dir,
+            args.annotation_limit,
+            args.minimum_specialties,
+        )
     except (OSError, ValueError, csv.Error) as exc:
         print(f"DATASET_ANALYSIS_FAILED: {exc}", file=sys.stderr)
         return 2
@@ -368,6 +406,8 @@ def main(argv: list[str] | None = None) -> int:
         "meets_10_specialty_target": report["specialty_target_at_least_10_met"],
         "annotation_queue_created": report["annotation_queue_created"],
         "annotation_queue_specialties": report["annotation_queue_specialty_count"],
+        "minimum_specialties_required": report["annotation_queue_minimum_specialties_required"],
+        "minimum_specialty_coverage_met": report["annotation_queue_meets_minimum_specialties"],
         "annotation_queue_is_gold_labelled": False,
         "report_markdown": str(args.reports_dir / "dataset_quality_report.md"),
         "report_json": str(args.reports_dir / "dataset_quality_report.json"),

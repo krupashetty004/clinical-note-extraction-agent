@@ -1,5 +1,8 @@
 """Provider invocation and validation pipeline."""
 
+from collections.abc import Mapping, Sequence
+from typing import Any
+
 from dashboard.extraction.providers import ExtractionProvider
 from dashboard.extraction.schema import ExtractionResult
 from dashboard.extraction.service import (
@@ -44,6 +47,8 @@ _SAFE_PROVIDER_FAILURE_CODES = frozenset({
 def run_extraction(
     provider: ExtractionProvider,
     original_note: str,
+    *,
+    reference_context: Sequence[Mapping[str, Any]] = (),
 ) -> ExtractionResult:
     """Run a provider and validate its output against the original note.
 
@@ -54,7 +59,13 @@ def run_extraction(
         raise TypeError("original_note must be a string.")
 
     try:
-        payload = provider.extract(original_note)
+        if reference_context:
+            payload = provider.extract(
+                original_note,
+                reference_context=reference_context,
+            )
+        else:
+            payload = provider.extract(original_note)
     except TimeoutError as exc:
         raise ExtractionProviderError(
             "The extraction provider timed out.",

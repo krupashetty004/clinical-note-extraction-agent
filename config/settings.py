@@ -218,11 +218,19 @@ SYNTHETIC_DEMO_ENABLED = (
     in {"1", "true", "yes"}
 )
 
-# Real Groq adapter is opt-in for local synthetic-only tests.
-# Never enable clinical-note processing with this development configuration.
+# The Groq adapter may be enabled locally for synthetic-only tests.
+# This flag alone must never route Doctor clinical notes to an external API.
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b").strip() or "openai/gpt-oss-20b"
 GROQ_PROVIDER_ENABLED = (
     DEBUG
     and os.environ.get("MIRAI_ENABLE_GROQ_PROVIDER", "").strip().lower()
+    in {"1", "true", "yes"}
+)
+
+# External processing of actual clinical notes is disabled by default.
+# Enable only after Mirai Labs has completed and documented the required
+# privacy/security review and approved the selected provider/data flow.
+EXTERNAL_CLINICAL_DATA_APPROVED = (
+    os.environ.get("MIRAI_EXTERNAL_CLINICAL_DATA_APPROVED", "").strip().lower()
     in {"1", "true", "yes"}
 )

@@ -4,7 +4,10 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase
 
 from dashboard.forms import ClinicalNoteForm
-from dashboard.knowledge_ingestion import extract_uploaded_source
+from dashboard.knowledge_ingestion import (
+    KnowledgeIngestionError,
+    extract_uploaded_source,
+)
 
 
 class VisionUploadIntegrationTests(SimpleTestCase):
@@ -33,7 +36,7 @@ class VisionUploadIntegrationTests(SimpleTestCase):
 
         self.assertIn("possible musculoskeletal injury", text)
         self.assertEqual(source_type, "image")
-        self.assertEqual(status, "extracted")
+        self.assertEqual(status, "needs_review")
         mock_vision.assert_called_once()
 
     @patch(
@@ -41,7 +44,7 @@ class VisionUploadIntegrationTests(SimpleTestCase):
         return_value=(
             "Assessment: possible musculoskeletal injury causing chest pain.",
             "image",
-            "extracted",
+            "needs_review",
         ),
     )
     def test_clinical_note_form_uses_transcribed_image_text(
@@ -52,10 +55,29 @@ class VisionUploadIntegrationTests(SimpleTestCase):
             files={"source_file": self.make_image_upload()},
         )
 
-        self.assertTrue(form.is_valid(), form.errors.as_text())
+        self.assertFalse(form.is_valid())
         self.assertIn(
             "possible musculoskeletal injury",
+            form["original_text"].value(),
+        )
+        self.assertIn(
+            "Review and correct the text in the note editor",
+            str(form.errors),
+        )
+        self.assertEqual(
             form.cleaned_data["original_text"],
+            "Assessment: possible musculoskeletal injury causing chest pain.",
         )
         mock_extract.assert_called_once()
+
+    @patch(
+        "dashboard.knowledge_ingestion._extract_image_via_vision_llm",
+        return_value=None,
+    )
+    @patch("PIL.Image.open", side_effect=OSError("Synthetic OCR unavailable"))
+    def test_unreadable_image_is_rejected_without_placeholder_text(
+        self, _mock_image_open, _mock_vision
+    ):
+        with self.assertRaisesRegex(KnowledgeIngestionError, "No image transcription"):
+            extract_uploaded_source(self.make_image_upload())
 

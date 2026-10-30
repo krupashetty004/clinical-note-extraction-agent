@@ -1,8 +1,10 @@
+import hashlib
 import importlib.util
 import json
 import os
 from pathlib import Path
 
+from django.contrib import messages
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Max, Prefetch, Q
 from django.http import Http404, HttpRequest, HttpResponse, JsonResponse
@@ -26,6 +28,8 @@ from dashboard.forms import (
 )
 
 from dashboard.access import role_required
+from dashboard.provider_config import ai_configuration_fingerprint
+
 from dashboard.models import (
     AIConfiguration,
     ClinicalNote,
@@ -64,9 +68,24 @@ ANNOTATION_WORKING_QUEUE_FILENAME = ".annotation_working_queue.jsonl"
 
 
 def _annotation_template_path() -> Path:
-    """Resolve the repository-backed queue template without allowing escapes."""
+    """Prefer the uploaded CSV's locally prepared queue; fall back to the tracked template."""
     repo_root = Path(settings.BASE_DIR).resolve()
-    candidate = repo_root / "mirai_dataset_preparation_pack" / "data" / "external" / "mtsamples" / "annotations" / "annotation_template_100.jsonl"
+    local_candidate = (
+        repo_root
+        / ".dataset_working"
+        / "annotations"
+        / "annotation_template_100.jsonl"
+    )
+    tracked_candidate = (
+        repo_root
+        / "mirai_dataset_preparation_pack"
+        / "data"
+        / "external"
+        / "mtsamples"
+        / "annotations"
+        / "annotation_template_100.jsonl"
+    )
+    candidate = local_candidate if local_candidate.is_file() else tracked_candidate
     try:
         candidate.relative_to(repo_root)
     except ValueError as exc:
@@ -75,9 +94,13 @@ def _annotation_template_path() -> Path:
 
 
 def _annotation_working_path() -> Path:
-    """Resolve the Git-ignored working queue used for local drafts."""
+    """Resolve the ignored working queue beside the selected source template."""
+    template_path = _annotation_template_path()
+    if template_path.parent.parent.name == ".dataset_working":
+        candidate = template_path.parent / ".annotation_working_queue.jsonl"
+    else:
+        candidate = Path(settings.BASE_DIR).resolve() / ANNOTATION_WORKING_QUEUE_FILENAME
     repo_root = Path(settings.BASE_DIR).resolve()
-    candidate = repo_root / ANNOTATION_WORKING_QUEUE_FILENAME
     try:
         candidate.relative_to(repo_root)
     except ValueError as exc:
@@ -820,6 +843,10 @@ def _processing_run_context(
         "extraction_json": format_result(run.extraction_result),
         "coding_json": format_result(run.coding_result),
         "verification_json": format_result(run.verification_result),
+        "knowledge_retrieval_json": format_result({
+            "status": run.knowledge_retrieval_status,
+            "references": run.knowledge_references,
+        }),
         "dispositions_json": format_result(run.item_dispositions),
         "review_reasons_json": format_result(run.review_reasons),
         "review_form": form or ProcessingRunReviewForm(
@@ -1038,6 +1065,13 @@ def knowledge_document_edit(request: HttpRequest, doc_id: int) -> HttpResponse:
                         "document": document,
                     },
                 )
+            # Publishing an uploaded draft is an explicit reviewer action.
+            # Active documents still in needs_review are never retrieved by RAG.
+            if updated.is_active and updated.ingestion_status == "needs_review":
+                updated.ingestion_status = "published"
+            elif not updated.is_active and updated.ingestion_status == "published":
+                updated.ingestion_status = "draft"
+
             updated.version_number = document.version_number + 1
             updated.created_by = document.created_by or request.user
             if not updated.is_active and prior_active:
@@ -1071,8 +1105,69 @@ def knowledge_document_edit(request: HttpRequest, doc_id: int) -> HttpResponse:
     )
 
 
+def _test_ai_configuration(configuration: AIConfiguration) -> tuple[str, str]:
+    """Test only with a fixed synthetic note; never submit user/patient data."""
+    if configuration.provider == "synthetic":
+        return (
+            "passed",
+            "Synthetic configuration validated locally; no external request was made.",
+        )
+
+    if configuration.provider != "groq":
+        return (
+            "blocked",
+            "Gemini execution is not implemented in this build; no request was made.",
+        )
+
+    if not getattr(settings, "GROQ_PROVIDER_ENABLED", False):
+        return (
+            "blocked",
+            "Live provider testing is disabled in this local build; no request was made.",
+        )
+
+    api_key = configuration.get_api_key() or os.environ.get("GROQ_API_KEY", "").strip()
+    if not api_key:
+        return ("blocked", "No Groq API key is configured; no request was made.")
+
+    synthetic_note = (
+        "Synthetic provider connectivity test only. "
+        "Assessment: hypertension. Medication: metformin."
+    )
+    try:
+        from dashboard.extraction.groq_provider import (
+            GroqExtractionProvider,
+            GroqProviderConfigurationError,
+            GroqProviderError,
+        )
+        from dashboard.extraction.service import validate_extraction_output
+
+        provider = GroqExtractionProvider(
+            api_key=api_key,
+            model=configuration.model,
+            temperature=float(configuration.temperature),
+            max_completion_tokens=configuration.max_tokens,
+        )
+        payload = provider.extract(synthetic_note)
+        validate_extraction_output(payload, synthetic_note)
+    except GroqProviderConfigurationError:
+        return ("blocked", "Groq client configuration is incomplete; no clinical note was sent.")
+    except GroqProviderError as exc:
+        return ("failed", f"Groq synthetic connection test failed ({exc.code}).")
+    except Exception as exc:
+        return (
+            "failed",
+            f"Groq synthetic connection test failed ({type(exc).__name__}).",
+        )
+
+    return (
+        "passed",
+        f"Groq synthetic extraction test passed for {configuration.model}; no patient data was used.",
+    )
+
+
 @role_required("Administrator")
 def settings_page(request: HttpRequest) -> HttpResponse:
+    """Manage versioned provider configuration with real synthetic-only tests."""
     active_configuration = AIConfiguration.objects.filter(is_active=True).first()
     draft = AIConfiguration.objects.filter(is_active=False).first()
     form = AIConfigurationForm(request.POST or None, instance=draft)
@@ -1080,158 +1175,90 @@ def settings_page(request: HttpRequest) -> HttpResponse:
 
     if request.method == "POST":
         action = request.POST.get("action")
-        if action in {"save_draft", "test", "activate"} and form.is_valid():
-            configuration = form.save(commit=False)
-            configuration.created_by = request.user
-            api_key = form.cleaned_data.get("api_key", "")
-            if api_key:
-                configuration.set_api_key(api_key)
-            configuration.version_number = (
-                (AIConfiguration.objects.order_by("-version_number").values_list("version_number", flat=True).first() or 0)
-                + 1
-            )
-            if action == "test":
-                if configuration.provider == "synthetic":
-                    configuration.last_test_status = "passed"
+        if action in {"save_draft", "test", "activate"}:
+            if form.is_valid():
+                configuration = form.save(commit=False)
+                if configuration.created_by_id is None:
+                    configuration.created_by = request.user
+
+                api_key = form.cleaned_data.get("api_key", "")
+                if api_key:
+                    configuration.set_api_key(api_key)
+
+                if not configuration.version_number:
+                    configuration.version_number = 1
+
+                if action == "save_draft":
+                    configuration.is_active = False
+                    configuration.last_test_status = "not_tested"
                     configuration.last_test_result = (
-                        "Synthetic configuration validated locally; no provider call was made."
+                        "Draft saved. Run a new synthetic connection test before activation."
                     )
-                elif action == "test":
-                    # If an API key is provided, validate and pass the configuration so it can be activated
-                    has_key = bool(api_key or getattr(configuration, "api_key_encrypted", ""))
-                    if has_key:
-                        configuration.last_test_status = "passed"
-                        configuration.last_test_result = (
-                            f"{configuration.get_provider_display()} credentials validated successfully; ready for activation."
-                        )
-                    else:
-                        configuration.last_test_status = "blocked"
-                        configuration.last_test_result = (
-                            "Live provider testing is disabled in this local build; no request was made."
-                        )
-                configuration.tested_at = timezone.now()
-            configuration.save()
-
-            if action == "activate":
-                # Activation is only allowed after a successful connectivity test.
-                if configuration.last_test_status != "passed":
-                    form.add_error(
-                        None,
-                        "Test this configuration successfully before activation.",
-                    )
-                else:
-                    # Proceed with activation. Mark test status as passed if it wasn't already.
-                    if configuration.last_test_status != "passed":
-                        configuration.last_test_status = "passed"
-                        configuration.last_test_result = f"{configuration.get_provider_display()} activated successfully."
-                        configuration.tested_at = timezone.now()
-                    AIConfiguration.objects.filter(is_active=True).update(
-                        is_active=False,
-                        activated_at=None,
-                        activated_by=None,
-                    )
-                    configuration.is_active = True
-                    configuration.activated_by = request.user
-                    configuration.activated_at = timezone.now()
+                    configuration.tested_fingerprint = ""
+                    configuration.tested_at = None
                     configuration.save()
-            # After any POST action, refresh draft. Re‑instantiate the form only when there are no errors (activation succeeded),
-            # so that validation errors (e.g., missing successful test) are preserved and displayed.
-            draft = configuration
-            if not form.errors:
-                form = AIConfigurationForm(instance=draft)
-            if action == "test":
-                test_result = configuration.last_test_result
-            elif action == "save_draft":
-                test_result = "Draft saved. It is not active."
-            # For activate we fall through to normal rendering.
-        elif action == "test":
-            # If form is invalid during test, still capture result.
-            test_result = "Form validation failed."
-    # Render
-    return render(
-        request,
-        "dashboard/settings.html",
-        {
-            "page_title": "AI settings",
-            "active_nav": "settings",
-            "form": form,
-            "active_configuration": active_configuration,
-            "draft": draft,
-            "test_result": test_result,
-            "provider_key_configured": bool(
-                os.environ.get("GROQ_API_KEY", "").strip()
-                or (draft and draft.has_api_key())
-            ),
-            "usage_configuration": active_configuration or draft,
-        },
-    )
-    active_configuration = AIConfiguration.objects.filter(is_active=True).first()
-    draft = AIConfiguration.objects.filter(is_active=False).first()
-    form = AIConfigurationForm(request.POST or None, instance=draft)
-    test_result = None
+                    test_result = configuration.last_test_result
 
-    if request.method == "POST":
-        action = request.POST.get("action")
-        if action in {"save_draft", "test", "activate"} and form.is_valid():
-            configuration = form.save(commit=False)
-            configuration.created_by = request.user
-            api_key = form.cleaned_data.get("api_key", "")
-            if api_key:
-                configuration.set_api_key(api_key)
-            configuration.version_number = (
-                (AIConfiguration.objects.order_by("-version_number").values_list("version_number", flat=True).first() or 0)
-                + 1
-            )
-            if action == "test":
-                if configuration.provider == "synthetic":
-                    configuration.last_test_status = "passed"
-                    configuration.last_test_result = (
-                        "Synthetic configuration validated locally; no provider call was made."
-                    )
                 elif action == "test":
-                    # If an API key is provided, validate and pass the configuration so it can be activated
-                    has_key = bool(api_key or getattr(configuration, "api_key_encrypted", ""))
-                    if has_key:
-                        configuration.last_test_status = "passed"
-                        configuration.last_test_result = (
-                            f"{configuration.get_provider_display()} credentials validated successfully; ready for activation."
-                        )
-                    else:
-                        configuration.last_test_status = "blocked"
-                        configuration.last_test_result = (
-                            "Live provider testing is disabled in this local build; no request was made."
-                        )
-                configuration.tested_at = timezone.now()
-            configuration.save()
-
-            if action == "activate":
-                # Activation is only allowed after a successful connectivity test.
-                if configuration.last_test_status != "passed":
-                    form.add_error(
-                        None,
-                        "Test this configuration successfully before activation.",
+                    status, result_text = _test_ai_configuration(configuration)
+                    configuration.is_active = False
+                    configuration.last_test_status = status
+                    configuration.last_test_result = result_text
+                    configuration.tested_at = timezone.now()
+                    configuration.tested_fingerprint = (
+                        ai_configuration_fingerprint(configuration)
+                        if status == "passed"
+                        else ""
                     )
-                else:
-                    # Proceed with activation. Mark test status as passed if it wasn't already.
-                    if configuration.last_test_status != "passed":
-                        configuration.last_test_status = "passed"
-                        configuration.last_test_result = f"{configuration.get_provider_display()} activated successfully."
-                        configuration.tested_at = timezone.now()
-                    AIConfiguration.objects.filter(is_active=True).update(
-                        is_active=False,
-                        activated_at=None,
-                        activated_by=None,
-                    )
-                    configuration.is_active = True
-                    configuration.activated_by = request.user
-                    configuration.activated_at = timezone.now()
                     configuration.save()
-                    active_configuration = configuration
-            elif action == "test":
-                test_result = configuration.last_test_result
-            draft = configuration
-            if action == "save_draft":
-                test_result = "Draft saved. It is not active."
+                    test_result = result_text
+
+                elif action == "activate":
+                    current_fingerprint = ai_configuration_fingerprint(configuration)
+                    test_matches_current_configuration = (
+                        configuration.last_test_status == "passed"
+                        and configuration.tested_fingerprint
+                        and configuration.tested_fingerprint == current_fingerprint
+                    )
+                    if not test_matches_current_configuration:
+                        configuration.is_active = False
+                        configuration.last_test_status = "not_tested"
+                        configuration.last_test_result = (
+                            "Configuration values or credentials changed after the last test. "
+                            "Run Test connection again before activation."
+                        )
+                        configuration.tested_fingerprint = ""
+                        configuration.tested_at = None
+                        configuration.save()
+                        form.add_error(
+                            None,
+                            "Test this configuration successfully before activation. "
+                            + configuration.last_test_result,
+                        )
+                        test_result = configuration.last_test_result
+                    else:
+                        AIConfiguration.objects.filter(is_active=True).exclude(
+                            pk=configuration.pk
+                        ).update(
+                            is_active=False,
+                            activated_at=None,
+                            activated_by=None,
+                        )
+                        configuration.is_active = True
+                        configuration.activated_by = request.user
+                        configuration.activated_at = timezone.now()
+                        configuration.save()
+                        active_configuration = configuration
+                        test_result = (
+                            f"{configuration.get_provider_display()} / "
+                            f"{configuration.model} activated."
+                        )
+
+                draft = configuration
+                if not form.errors:
+                    form = AIConfigurationForm(instance=draft)
+            else:
+                test_result = "Form validation failed."
 
     return render(
         request,
@@ -1246,6 +1273,7 @@ def settings_page(request: HttpRequest) -> HttpResponse:
             "provider_key_configured": bool(
                 os.environ.get("GROQ_API_KEY", "").strip()
                 or (draft and draft.has_api_key())
+                or (active_configuration and active_configuration.has_api_key())
             ),
             "usage_configuration": active_configuration or draft,
         },
@@ -1373,7 +1401,7 @@ def run_ai_processing(
     request: HttpRequest,
     note_id: int,
 ) -> HttpResponse:
-    """Run clinical extraction and verification using the active AI configuration or local clinical AI engine."""
+    """Run only the explicitly selected, configured and approved provider."""
     authorized_patients = Patient.objects.accessible_to(request.user)
     note = get_object_or_404(
         ClinicalNote.objects.filter(encounter__patient__in=authorized_patients),
@@ -1381,23 +1409,69 @@ def run_ai_processing(
     )
 
     active_config = AIConfiguration.objects.filter(is_active=True).first()
-    if (
-        active_config
-        and active_config.provider == "groq"
-        and getattr(settings, "GROQ_PROVIDER_ENABLED", False)
-        and os.environ.get("GROQ_API_KEY", "").strip()
-    ):
+    if active_config and active_config.provider == "gemini":
+        messages.error(
+            request,
+            "Gemini processing is not available because its provider adapter is not implemented. "
+            "No alternative provider was selected.",
+        )
+        return redirect(
+            "dashboard:patient_detail",
+            patient_id=note.encounter.patient_id,
+        )
+
+    if active_config and active_config.provider == "groq":
+        if not getattr(settings, "GROQ_PROVIDER_ENABLED", False):
+            messages.error(
+                request,
+                "Groq is disabled in this environment. No alternative provider was selected.",
+            )
+            return redirect(
+                "dashboard:patient_detail",
+                patient_id=note.encounter.patient_id,
+            )
+        if not getattr(settings, "EXTERNAL_CLINICAL_DATA_APPROVED", False):
+            messages.error(
+                request,
+                "External clinical-note processing has not been approved. "
+                "The note was not sent to Groq and no alternative provider was selected.",
+            )
+            return redirect(
+                "dashboard:patient_detail",
+                patient_id=note.encounter.patient_id,
+            )
+
+        api_key = active_config.get_api_key() or os.environ.get("GROQ_API_KEY", "").strip()
+        if not api_key:
+            messages.error(
+                request,
+                "The active Groq configuration has no usable credential. "
+                "No alternative provider was selected.",
+            )
+            return redirect(
+                "dashboard:patient_detail",
+                patient_id=note.encounter.patient_id,
+            )
+
         from dashboard.extraction.groq_provider import (
             GroqExtractionProvider,
             GroqVerificationProvider,
         )
-        extraction_provider = GroqExtractionProvider()
-        verification_provider = GroqVerificationProvider()
+
+        provider_options = {
+            "api_key": api_key,
+            "model": active_config.model,
+            "temperature": float(active_config.temperature),
+            "max_completion_tokens": active_config.max_tokens,
+        }
+        extraction_provider = GroqExtractionProvider(**provider_options)
+        verification_provider = GroqVerificationProvider(**provider_options)
     else:
         from dashboard.extraction.local_provider import (
             LocalClinicalExtractionProvider,
             LocalClinicalVerificationProvider,
         )
+
         extraction_provider = LocalClinicalExtractionProvider()
         verification_provider = LocalClinicalVerificationProvider()
 
@@ -1455,6 +1529,10 @@ def export_processing_run(
         "extraction_result": run.extraction_result,
         "coding_result": run.coding_result,
         "verification_result": run.verification_result,
+        "knowledge_retrieval": {
+            "status": run.knowledge_retrieval_status,
+            "references": run.knowledge_references,
+        },
         "item_dispositions": run.item_dispositions,
         "review": {
             "status": run.status,

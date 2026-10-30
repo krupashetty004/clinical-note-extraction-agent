@@ -2,9 +2,10 @@
 from unittest.mock import MagicMock, patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 
 from dashboard.knowledge_ingestion import _extract_image_via_vision_llm
+from dashboard.provider_config import ai_configuration_fingerprint
 
 
 class VisionIngestionTests(SimpleTestCase):
@@ -13,6 +14,9 @@ class VisionIngestionTests(SimpleTestCase):
     def configure_active_groq(self, config_class):
         config = MagicMock()
         config.provider = "groq"
+        config.model = "qwen/qwen3.8-27b"
+        config.temperature = 0.0
+        config.max_tokens = 2048
         config.get_api_key.return_value = "unit-test-key"
 
         (
@@ -21,8 +25,17 @@ class VisionIngestionTests(SimpleTestCase):
             .first.return_value
         ) = config
 
+        config.last_test_status = "passed"
+        config.tested_fingerprint = ai_configuration_fingerprint(
+            config,
+            api_key="unit-test-key",
+        )
         return config
 
+    @override_settings(
+        GROQ_PROVIDER_ENABLED=True,
+        EXTERNAL_CLINICAL_DATA_APPROVED=True,
+    )
     def test_groq_vision_returns_transcribed_text_in_one_request(self):
         expected_text = (
             "Assessment: possible musculoskeletal injury causing chest pain."
@@ -61,6 +74,55 @@ class VisionIngestionTests(SimpleTestCase):
             image_url = request["messages"][0]["content"][1]["image_url"]["url"]
             self.assertTrue(image_url.startswith("data:image/png;base64,"))
             self.assertEqual(request["model"], "qwen/qwen3.8-27b")
+            self.assertEqual(request["temperature"], 0.0)
+            self.assertEqual(request["max_completion_tokens"], 2048)
+
+    @override_settings(
+        GROQ_PROVIDER_ENABLED=True,
+        EXTERNAL_CLINICAL_DATA_APPROVED=False,
+    )
+    def test_unapproved_external_clinical_data_blocks_vision_before_lookup(self):
+        with (
+            patch("dashboard.models.AIConfiguration") as config_class,
+            patch("groq.Groq") as groq_class,
+            patch("dashboard.utils.increment_credit") as credit_counter,
+        ):
+            uploaded = SimpleUploadedFile(
+                "synthetic.png",
+                b"synthetic-image-bytes",
+                content_type="image/png",
+            )
+
+            result = _extract_image_via_vision_llm(uploaded, ".png")
+
+            self.assertIsNone(result)
+            config_class.objects.filter.assert_not_called()
+            groq_class.assert_not_called()
+            credit_counter.assert_not_called()
+
+    @override_settings(
+        GROQ_PROVIDER_ENABLED=True,
+        EXTERNAL_CLINICAL_DATA_APPROVED=True,
+    )
+    def test_non_vision_active_model_does_not_silently_switch_model(self):
+        with (
+            patch("dashboard.models.AIConfiguration") as config_class,
+            patch("groq.Groq") as groq_class,
+            patch("dashboard.utils.increment_credit") as credit_counter,
+        ):
+            config = self.configure_active_groq(config_class)
+            config.model = "openai/gpt-oss-120b"
+            uploaded = SimpleUploadedFile(
+                "synthetic.png",
+                b"synthetic-image-bytes",
+                content_type="image/png",
+            )
+
+            result = _extract_image_via_vision_llm(uploaded, ".png")
+
+            self.assertIsNone(result)
+            groq_class.assert_not_called()
+            credit_counter.assert_not_called()
 
     def test_missing_configuration_does_not_call_provider(self):
         with (
@@ -90,6 +152,10 @@ class VisionIngestionTests(SimpleTestCase):
             groq_class.assert_not_called()
             credit_counter.assert_not_called()
 
+    @override_settings(
+        GROQ_PROVIDER_ENABLED=True,
+        EXTERNAL_CLINICAL_DATA_APPROVED=True,
+    )
     def test_provider_failure_does_not_retry(self):
         with (
             patch("dashboard.models.AIConfiguration") as config_class,

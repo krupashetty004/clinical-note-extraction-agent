@@ -40,7 +40,7 @@ pip install -r requirements.txt
 python manage.py migrate
 ```
 
-This creates an SQLite database at `db.sqlite3` and seeds the `Doctor` and `Admin` workspace roles.
+This creates an SQLite database at `db.sqlite3` and seeds the `Doctor` and `Administrator` workspace roles. No default user accounts or passwords are created.
 
 ### 5. Create a superuser (admin account)
 
@@ -50,19 +50,14 @@ python manage.py createsuperuser
 
 Follow the prompts to set a username and password.
 
-### 6. Add the superuser to the Doctor group
+### 6. Create least-privilege workspace users
 
-```bash
-python manage.py shell -c "
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
-u = get_user_model().objects.get(username='<your-username>')
-u.groups.add(Group.objects.get(name='Doctor'))
-print('Done')
-"
-```
+The superuser created above can access all application views. For day-to-day use, sign in to `/admin/`, create a separate non-superuser account, set its password, and assign exactly one workspace group:
 
-Replace `<your-username>` with the username you created above.
+- `Doctor` for patient, encounter, note processing, knowledge review and annotation tasks.
+- `Administrator` for AI settings and administrator-only functions.
+
+Do not share the superuser account for routine work. The login page does not publish demo usernames or passwords, and the application does not create default accounts automatically.
 
 ### 7. Start the development server
 
@@ -86,8 +81,13 @@ Open **http://127.0.0.1:8000/** in your browser and sign in.
 
 On the patient detail page, click **"Process with AI Agent"** (POST to `/notes/<id>/process/`).
 
-- If a Groq API key is configured in Settings and `GROQ_PROVIDER_ENABLED=True`, the Groq extraction provider is used.
-- Otherwise the **local offline extraction engine** (`LocalClinicalExtractionProvider`) runs — no network call required.
+- With no active AI configuration, or with the local synthetic configuration active, the **local offline extraction engine** (`LocalClinicalExtractionProvider`) is used and makes no network call.
+- The Administrator **AI settings → Test connection** action uses a fixed synthetic note only. Groq tests run the configured model and validate its structured extraction response; the settings page does not send patient data.
+- Provider activation is allowed only when the test passed for the exact same provider, model, temperature, token limit and credential fingerprint. Changing one of those values requires a new test.
+- Groq choices currently include `openai/gpt-oss-20b`, `openai/gpt-oss-120b`, and `qwen/qwen3.8-27b`. Deprecated Llama model IDs were removed.
+- Gemini is displayed as unsupported because its execution adapter is not implemented. Selecting an unsupported provider does not silently switch to another provider.
+- To run Doctor notes through Groq, all of the following are required: `MIRAI_ENABLE_GROQ_PROVIDER=1` in the local development environment, `MIRAI_EXTERNAL_CLINICAL_DATA_APPROVED=1` after formal Mirai Labs privacy/security approval, an active Groq configuration, and a usable configured credential. If any condition is missing, the request is blocked and the doctor receives a visible message; it does not fall back silently.
+- The active provider model, saved encrypted key, temperature and completion-token limit are passed to both Groq extraction and verification.
 
 The run is saved and you are redirected to the processing run detail page.
 
@@ -99,7 +99,7 @@ The run is saved and you are redirected to the processing run detail page.
 
 ### Optional: Run the synthetic demo
 
-To use the built-in synthetic data demo (no real notes needed), set `SYNTHETIC_DEMO_ENABLED=True` in your environment or `config/settings.py`, then click **"Run synthetic demo"** on any patient detail page.
+To use the built-in synthetic data demo (no real notes needed), set `MIRAI_ENABLE_SYNTHETIC_DEMO=1` in the local environment, then click **"Run synthetic demo"** on any patient detail page. The demo remains disabled by default.
 
 ---
 
@@ -107,62 +107,73 @@ To use the built-in synthetic data demo (no real notes needed), set `SYNTHETIC_D
 
 Go to **Knowledge Base → Upload Document** to add clinical guidelines, protocols, or reference documents (`.txt`, `.pdf`, `.md`, `.wav`, `.mp3`).
 
-- Text and PDF content is extracted and stored as knowledge passages.
-- The RAG service retrieves relevant passages during AI extraction to improve context.
+- Text files and selectable-text PDFs are extracted locally. Scanned PDFs are rendered locally with PDFium and OCR is attempted through Tesseract; an approved Groq vision fallback is available for up to 10 scanned pages. Each file is limited to 10 MB and PDFs to 100 pages.
+- Image uploads try local Tesseract OCR first, then the same gated Groq vision path. No environment-key or Gemini fallback is permitted.
+- Audio uploads (.wav, .mp3, .m4a, .ogg) use Groq's dedicated `whisper-large-v3-turbo` speech-to-text model only when both `MIRAI_ENABLE_GROQ_PROVIDER=1` and `MIRAI_EXTERNAL_CLINICAL_DATA_APPROVED=1` are enabled, and an active Groq credential has passed the synthetic configuration test. Audio uses this dedicated speech model rather than the chat/extraction model selected in Settings.
+- OCR/audio results are drafts. For clinical-note uploads, the first submission populates the note editor and is rejected until the doctor reviews/corrects the transcription and submits again without re-uploading. Knowledge Base uploads remain inactive with `needs_review` until corrected and explicitly published.
+- If a local or approved transcription path is unavailable, the upload is rejected with an actionable error. It never inserts a filename or placeholder as transcribed clinical text.
+- Local scanned-PDF OCR requires the Tesseract executable to be installed and available on `PATH`; the Python dependencies include PyPDFium2 and Pillow. Verify the local Tesseract installation with `tesseract --version`.
+- Local lexical RAG retrieval is connected to the Doctor clinical-note processing workflow. It selects up to three active manually entered or explicitly published passages and passes them separately from the original note to compatible providers.
+- Uploaded documents remain inactive and excluded while `needs_review`; a doctor/administrator must review and publish them before retrieval.
+- Retrieved document/version/chunk citations and scores are persisted with the processing run and shown in its detail page/export.
+- Original-note evidence spans remain mandatory. Reference passages are context only and must never be used as evidence for a diagnosis or other extracted claim.
+- The current RAG implementation is lexical; it does not yet use embeddings or pgvector. The deterministic local rules provider ignores the context, while the Groq adapter receives it separately.
 
 ---
 
-## Annotation Queue (Gold Data)
+## Dataset preparation and annotation
 
-The annotation workflow is at `/annotation/`. The working queue is loaded from:
+The MTSamples preparation tools live in `mirai_dataset_preparation_pack/`. Place the CSV at:
 
-- Template: `mirai_dataset_preparation_pack/data/external/mtsamples/annotations/annotation_template_100.jsonl`
-- Working draft: `.annotation_working_queue.jsonl` (git-ignored, created at repo root)
+`mirai_dataset_preparation_pack/data/external/mtsamples/raw/mtsamples.csv`
 
-To regenerate the gold annotations:
+Then run from the repository root:
 
-```bash
-python scripts/generate_golden_annotations.py
+```powershell
+python .\\mirai_dataset_preparation_pack\\scripts\\analyze_mtsamples.py
 ```
 
----
+The analyzer prepares a full normalized local corpus, a deterministic 100-note specialty-balanced annotation queue, and aggregate quality reports under `.dataset_working/\`. That directory and the raw CSV are Git-ignored because they contain clinical narratives.
 
-## Evaluation (SOW Benchmark)
+The 100-note queue starts unannotated. MTSamples specialty labels and keywords are not gold entity annotations. Never mark automatically generated labels as human gold or independently adjudicated. AI-generated labels may be tracked separately as provisional benchmark labels, not clinical gold.
 
-Run the full SOW evaluation pipeline:
+The Doctor annotation workspace loads the locally prepared queue when it exists and saves drafts beside that queue. The tracked template remains a fallback only. The source CSV, normalized records, annotation queue, and working drafts stay in the ignored `.dataset_working/\` directory.
 
-```bash
-# 1. Generate gold annotations (AI-marked, not manually reviewed)
-python scripts/generate_golden_annotations.py
+### Process the prepared dataset through the clinical agent
 
-# 2. Populate challenge observations
-python scripts/complete_challenge_observations.py
+First check that the local ICD-10-CM table is populated. On a fresh local database, import the repository's reference file once:
 
-# 3. Run prediction scoring
-python scripts/run_full_evaluation.py
-
-# 4. Print the SOW scorecard
-python scripts/print_scorecard.py
+```powershell
+python manage.py import_icd10 --source data\\reference\\icd10cm-codes-2027.txt --apply
 ```
 
-The final report is written to `reports/final_sow_evaluation_report.json`.
+Then inspect the dataset status and process the 100-record queue:
 
-### SOW Scorecard (current results)
+```powershell
+python manage.py dataset_status
+python manage.py process_mtsamples_dataset --limit 100
+```
 
-| Metric | Target | Result | Status |
-|--------|--------|--------|--------|
-| Diagnosis F1 | ≥ 0.80 | 0.9971 | ✅ PASS |
-| Medication F1 | ≥ 0.85 | 1.0000 | ✅ PASS |
-| Evidence Faithfulness | 100% | 1.0000 | ✅ PASS |
-| Status Accuracy | ≥ 90% | 1.0000 | ✅ PASS |
-| ICD-10 Top-3 Hit Rate | ≥ 75% | 0.9937 | ✅ PASS |
-| Contradiction Detection | ≥ 80% on ≥20 cases | 1.0000 | ✅ PASS |
-| Rare Diagnosis Abstention | ≥ 80% on ≥10 cases | 1.0000 | ✅ PASS |
-| Adversarial Handling | 100% on ≥10 cases | 1.0000 | ✅ PASS |
-| Median Latency | < 30 s | 1.8 s | ✅ PASS |
-| Improvement over baseline | measurable | +0.1669 F1 | ✅ PASS |
+The batch command always uses the local dictionary extraction and verification providers. It reuses the same extraction, ICD-10 candidate retrieval, verification, reconciliation, bounded retry and abstention workflow, but does not create patient/encounter records or clinical processing runs.
+
+Outputs are written only under `.dataset_working\\runs\\mtsamples\\`:
+- `predictions.jsonl` — structured entity results, evidence offsets, ICD-10 candidates, and source IDs.
+- `operations.jsonl` — status, duration, bounded attempt counts, provider identity and safe failure codes.
+- `results.jsonl` — atomic per-note checkpoint used by the resume option.
+- `manifest.json` — source-file SHA-256, provider identity, and selected record IDs used to prevent stale results from being resumed against a changed dataset.
+- `report.json` — aggregate processing totals and an evaluation status.
+
+Resume an interrupted batch with `--resume`; deliberately replace outputs with `--overwrite`. The batch does not call external AI providers. It does not claim clinical accuracy when qualified gold labels are unavailable.
 
 ---
+
+## Evaluation status
+
+The repository contains synthetic smoke tests, challenge observations and measured synthetic benchmark tooling. Their results are not interchangeable with independent clinical gold-standard evaluation.
+
+Do not use the legacy generated scorecard as proof that the original acceptance targets have been met. The MTSamples source does not provide note-level gold entity spans, assertion labels, or validated ICD-10-CM labels. It therefore cannot independently establish diagnosis/medication F1, evidence faithfulness, status accuracy or coding accuracy without suitable validated annotations.
+
+The current 100-record file in the repository must not be treated as 100 independently adjudicated clinical gold notes. Check `docs/evaluation-plan.md` before reporting evaluation results.
 
 ## Running Tests
 
@@ -179,7 +190,7 @@ python manage.py test evaluation
 python -m unittest discover -s mirai_dataset_preparation_pack/tests -v
 ```
 
-Current status: **330 tests, all PASS**
+Run the automated checks in GitHub Actions for the exact branch/commit being reviewed. Do not rely on a stale test count in this README.
 
 ---
 
@@ -226,13 +237,16 @@ clinical-note-extraction-agent/
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SECRET_KEY` | dev key | Django secret key (set in production) |
-| `DEBUG` | `True` | Set to `False` in production |
-| `DATABASE_URL` | SQLite | PostgreSQL connection string for production |
-| `GROQ_API_KEY` | — | Groq API key for LLM extraction (optional) |
-| `GROQ_PROVIDER_ENABLED` | `False` | Enable Groq extraction provider |
-| `SYNTHETIC_DEMO_ENABLED` | `False` | Enable the synthetic demo button |
-| `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated allowed hosts |
+| `DJANGO_SECRET_KEY` | local-only development key | Required secure Django signing key in production |
+| `DJANGO_ENV` | `development` | Set to `production` for hosted environments |
+| `DJANGO_DEBUG` | environment-dependent | Must be `0` in production |
+| `DATABASE_URL` | local SQLite | Persistent PostgreSQL connection string in production |
+| `DJANGO_ALLOWED_HOSTS` | `127.0.0.1,localhost` | Comma-separated allowed hosts when DEBUG is off |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | empty | Comma-separated HTTPS origins when required |
+| `GROQ_API_KEY` | — | Optional Groq credential; settings-page credentials are encrypted at rest |
+| `MIRAI_ENABLE_GROQ_PROVIDER` | `0` | Local Groq adapter opt-in; DEBUG-only |
+| `MIRAI_EXTERNAL_CLINICAL_DATA_APPROVED` | `0` | Separate approval gate for external Doctor-note processing; do not enable before formal privacy/security approval |
+| `MIRAI_ENABLE_SYNTHETIC_DEMO` | `0` | Enable the local synthetic demo in DEBUG mode |
 
 Set these in a `.env` file at the project root (never commit it).
 
@@ -240,9 +254,12 @@ Set these in a `.env` file at the project root (never commit it).
 
 ## Confidentiality
 
-- Keep this repository private.
-- Never commit the SOW, real clinical datasets, patient data, API keys, or uploaded files.
-- The public demo uses synthetic patient data only.
+- This repository is currently public. Treat every committed file as publicly accessible.
+- Never commit the raw MTSamples CSV, normalized note-level records, annotation queues containing note text, the SOW, patient data, API keys, or uploaded files.
+- Keep raw and generated dataset files in the Git-ignored local `.dataset_working/` directory.
+- The public demo must use synthetic patient data only.
+- No default demo usernames/passwords are stored in source code or exposed on the login page. Provision accounts explicitly; use a separate least-privilege Doctor account for routine work.
+- Never bootstrap users with known passwords or grant administrator roles automatically.
 - All clinical processing runs require doctor authentication and explicit patient access grants.
 
 ---

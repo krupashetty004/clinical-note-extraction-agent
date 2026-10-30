@@ -7,7 +7,8 @@ It does not persist records, call an external provider automatically,
 or treat schema validity as proof of clinical correctness.
 """
 
-from typing import Literal, Protocol
+from collections.abc import Mapping, Sequence
+from typing import Any, Literal, Protocol
 
 from pydantic import (
     BaseModel,
@@ -79,6 +80,8 @@ class VerificationProvider(Protocol):
         original_note: str,
         extraction: ExtractionResult,
         coding: DiagnosisCodingBatch,
+        *,
+        reference_context: Sequence[Mapping[str, Any]] = (),
     ) -> object:
         """Return untrusted structured verification data."""
         ...
@@ -251,6 +254,7 @@ def run_agent_workflow(
     verification_provider: VerificationProvider,
     original_note: str,
     *,
+    reference_context: Sequence[Mapping[str, Any]] = (),
     max_extraction_attempts: int = 2,
     max_verification_attempts: int = 2,
 ) -> AgentWorkflowResult:
@@ -284,10 +288,17 @@ def run_agent_workflow(
     # Phase 1: extract and validate, with bounded recovery.
     for extraction_attempts in range(1, max_extraction_attempts + 1):
         try:
-            extraction = run_extraction(
-                extraction_provider,
-                original_note,
-            )
+            if reference_context:
+                extraction = run_extraction(
+                    extraction_provider,
+                    original_note,
+                    reference_context=reference_context,
+                )
+            else:
+                extraction = run_extraction(
+                    extraction_provider,
+                    original_note,
+                )
             break
         except (ExtractionProviderError, ExtractionOutputError) as exc:
             last_extraction_error = exc
@@ -345,11 +356,19 @@ def run_agent_workflow(
         # Phase A: invoke the provider.
         # The provider's exception message is deliberately not logged.
         try:
-            verification_payload = verification_provider.verify(
-                original_note,
-                extraction,
-                coding,
-            )
+            if reference_context:
+                verification_payload = verification_provider.verify(
+                    original_note,
+                    extraction,
+                    coding,
+                    reference_context=reference_context,
+                )
+            else:
+                verification_payload = verification_provider.verify(
+                    original_note,
+                    extraction,
+                    coding,
+                )
         except TimeoutError:
             last_verification_code = "verification_timeout"
             logger.warning(

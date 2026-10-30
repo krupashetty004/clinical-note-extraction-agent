@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.test import TestCase
+from django.test import TestCase, override_settings
+from unittest.mock import patch
 from django.urls import reverse
 from django.core.files.uploadedfile import SimpleUploadedFile
 
@@ -163,6 +164,34 @@ class KnowledgeBaseTests(TestCase):
         edit_page = self.client.get(response.url)
         self.assertContains(edit_page, "Review this extracted guidance")
 
+    def test_reviewed_upload_is_published_before_rag_can_retrieve_it(self):
+        document = KnowledgeDocument.objects.create(
+            title="Uploaded hypertension guidance",
+            content="Hypertension management includes appropriate follow-up.",
+            ingestion_status="needs_review",
+            is_active=False,
+            created_by=self.admin,
+        )
+
+        response = self.client.post(
+            reverse("dashboard:knowledge_document_edit", kwargs={"doc_id": document.pk}),
+            {
+                "title": document.title,
+                "summary": "Reviewed local guidance.",
+                "content": document.content,
+                "is_active": "on",
+                "priority": "2",
+                "source_title": "Synthetic guideline",
+                "source_url": "https://example.test/guideline",
+                "source_quote": "Synthetic quote.",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        document.refresh_from_db()
+        self.assertTrue(document.is_active)
+        self.assertEqual(document.ingestion_status, "published")
+
     def test_unsupported_upload_is_rejected(self):
         response = self.client.post(
             reverse("dashboard:knowledge_document_new"),
@@ -247,6 +276,10 @@ class KnowledgeBaseTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'value="local-synthetic-v1"')
         self.assertContains(response, 'value="openai/gpt-oss-20b"')
+        self.assertContains(response, 'value="openai/gpt-oss-120b"')
+        self.assertContains(response, 'value="qwen/qwen3.8-27b"')
+        self.assertNotContains(response, "llama-3.3-70b-versatile")
+        self.assertNotContains(response, "llama-3.2-11b-vision-preview")
         self.assertContains(response, 'name="api_key"')
 
         self.client.post(
@@ -296,6 +329,95 @@ class KnowledgeBaseTests(TestCase):
         configuration.refresh_from_db()
         self.assertTrue(configuration.is_active)
         self.assertEqual(configuration.activated_by, self.admin)
+
+    @override_settings(GROQ_PROVIDER_ENABLED=True)
+    @patch("dashboard.extraction.groq_provider.GroqExtractionProvider")
+    def test_groq_connection_test_uses_saved_key_and_model_with_synthetic_input(
+        self,
+        mock_provider_class,
+    ):
+        mock_provider = mock_provider_class.return_value
+        mock_provider.extract.return_value = {
+            "items": [],
+            "needs_review": True,
+            "review_reasons": ["Synthetic provider test only."],
+        }
+
+        response = self.client.post(
+            reverse("dashboard:settings"),
+            {
+                "provider": "groq",
+                "model": "openai/gpt-oss-120b",
+                "temperature": "0",
+                "max_tokens": "1024",
+                "api_key": "gsk-synthetic-test-key",
+                "action": "test",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        configuration = AIConfiguration.objects.get()
+        self.assertEqual(configuration.last_test_status, "passed")
+        self.assertEqual(configuration.model, "openai/gpt-oss-120b")
+        self.assertEqual(len(configuration.tested_fingerprint), 64)
+        mock_provider_class.assert_called_once_with(
+            api_key="gsk-synthetic-test-key",
+            model="openai/gpt-oss-120b",
+            temperature=0.0,
+            max_completion_tokens=1024,
+        )
+        test_note = mock_provider.extract.call_args.args[0]
+        self.assertIn("Synthetic provider connectivity test", test_note)
+        self.assertNotIn("AI-PROC-001", test_note)
+
+        activated = self.client.post(
+            reverse("dashboard:settings"),
+            {
+                "provider": "groq",
+                "model": "openai/gpt-oss-120b",
+                "temperature": "0",
+                "max_tokens": "1024",
+                "api_key": "********",
+                "action": "activate",
+            },
+        )
+        self.assertEqual(activated.status_code, 200)
+        configuration.refresh_from_db()
+        self.assertTrue(configuration.is_active)
+        self.assertEqual(configuration.activated_by, self.admin)
+
+    def test_ai_configuration_cannot_activate_after_tested_values_change(self):
+        self.client.post(
+            reverse("dashboard:settings"),
+            {
+                "provider": "synthetic",
+                "model": "local-synthetic-v1",
+                "temperature": "0",
+                "max_tokens": "1024",
+                "action": "test",
+            },
+        )
+        configuration = AIConfiguration.objects.get()
+        self.assertEqual(configuration.last_test_status, "passed")
+
+        response = self.client.post(
+            reverse("dashboard:settings"),
+            {
+                "provider": "synthetic",
+                "model": "local-synthetic-v1",
+                "temperature": "0.5",
+                "max_tokens": "1024",
+                "action": "activate",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Configuration values or credentials changed")
+        configuration.refresh_from_db()
+        self.assertFalse(configuration.is_active)
+        self.assertEqual(configuration.last_test_status, "not_tested")
+        self.assertEqual(configuration.tested_fingerprint, "")
+        self.assertFalse(AIConfiguration.objects.filter(is_active=True).exists())
 
     def test_ai_settings_does_not_activate_live_provider_without_local_test(self):
         response = self.client.post(

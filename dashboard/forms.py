@@ -136,15 +136,32 @@ class ClinicalNoteForm(forms.ModelForm):
 
         if uploaded:
             try:
-                extracted_text, source_type, _ = extract_uploaded_source(uploaded)
+                extracted_text, source_type, ingestion_status = extract_uploaded_source(uploaded)
                 extracted_text = (extracted_text or "").strip()
                 if extracted_text:
-                    if text:
-                        text = f"{text}\n\n{extracted_text}"
-                    else:
-                        text = extracted_text
+                    combined_text = (
+                        f"{text}\n\n{extracted_text}" if text else extracted_text
+                    )
+                    if ingestion_status == "needs_review":
+                        # Keep a draft transcription visible in the textarea,
+                        # but require a second submit after the doctor reviews it.
+                        self.data = self.data.copy()
+                        self.data["original_text"] = combined_text
+                        cleaned_data["original_text"] = combined_text
+                        self.add_error(
+                            "source_file",
+                            "A draft transcription was generated. Review and correct "
+                            "the text in the note editor, then submit again without "
+                            "re-uploading the source file. The note has not been saved.",
+                        )
+                        return cleaned_data
+                    text = combined_text
             except KnowledgeIngestionError as exc:
                 self.add_error("source_file", str(exc))
+
+        if self.has_error("source_file"):
+            cleaned_data["original_text"] = text
+            return cleaned_data
 
         if not text:
             raise forms.ValidationError(
@@ -282,8 +299,16 @@ class KnowledgeDocumentForm(forms.ModelForm):
     source_file = forms.FileField(
         required=False,
         label="Source file",
-        help_text="Supported locally: .txt, .md, .pdf, .png, .jpg, .jpeg. Maximum 10 MB.",
-        widget=forms.ClearableFileInput(attrs={"class": "form-control", "accept": ".txt,.md,.pdf,.png,.jpg,.jpeg"}),
+        help_text=(
+            "Supported: .txt, .md, .pdf, .png, .jpg, .jpeg, .wav, .mp3, .m4a, "
+            ".ogg. Maximum 10 MB. OCR/audio transcripts remain inactive until reviewed."
+        ),
+        widget=forms.ClearableFileInput(
+            attrs={
+                "class": "form-control",
+                "accept": ".txt,.md,.pdf,.png,.jpg,.jpeg,.wav,.mp3,.m4a,.ogg",
+            }
+        ),
     )
     priority = forms.IntegerField(
         min_value=0,
@@ -319,35 +344,46 @@ class KnowledgeDocumentForm(forms.ModelForm):
                 raise forms.ValidationError("Embedded scripts are not allowed in knowledge-base content.")
         return cleaned
 
-    def clean(self):
-        cleaned = super().clean()
-        if not cleaned.get("content") and cleaned.get("source_file"):
-            # Model validation requires content; the upload view replaces this
-            # placeholder with extracted text before saving the document.
-            cleaned["content"] = "Pending local extraction review."
-            self.instance.content = cleaned["content"]
-        elif not cleaned.get("content"):
-            self.add_error("content", "Enter content or upload a supported source file.")
-        return cleaned
-
     def clean_source_file(self):
         uploaded = self.cleaned_data.get("source_file")
         if not uploaded:
             return uploaded
-        allowed = {".txt", ".md", ".pdf", ".png", ".jpg", ".jpeg"}
+        allowed = {
+            ".txt", ".md", ".pdf", ".png", ".jpg", ".jpeg",
+            ".wav", ".mp3", ".m4a", ".ogg",
+        }
         suffix = Path(uploaded.name).suffix.lower()
         if suffix not in allowed:
-            raise forms.ValidationError("Unsupported file type. Use TXT, Markdown, PDF, PNG, or JPEG.")
+            raise forms.ValidationError(
+                "Unsupported file type. Use TXT, Markdown, PDF, PNG, JPEG, WAV, MP3, M4A, or OGG."
+            )
         if uploaded.size > 10 * 1024 * 1024:
             raise forms.ValidationError("Files must be 10 MB or smaller.")
-        first_bytes = uploaded.read(8)
+        first_bytes = uploaded.read(16)
         uploaded.seek(0)
         if suffix == ".pdf" and not first_bytes.startswith(b"%PDF"):
             raise forms.ValidationError("The uploaded file is not a valid PDF.")
         if suffix in {".jpg", ".jpeg"} and not first_bytes.startswith(b"\xff\xd8\xff"):
             raise forms.ValidationError("The uploaded file is not a valid JPEG.")
-        if suffix == ".png" and first_bytes != b"\x89PNG\r\n\x1a\n":
+        if suffix == ".png" and first_bytes[:8] != b"\x89PNG\r\n\x1a\n":
             raise forms.ValidationError("The uploaded file is not a valid PNG.")
+        if suffix == ".wav" and not (
+            first_bytes[:4] == b"RIFF" and first_bytes[8:12] == b"WAVE"
+        ):
+            raise forms.ValidationError("The uploaded file is not a valid WAV audio file.")
+        if suffix == ".ogg" and first_bytes[:4] != b"OggS":
+            raise forms.ValidationError("The uploaded file is not a valid OGG audio file.")
+        if suffix == ".m4a" and first_bytes[4:8] != b"ftyp":
+            raise forms.ValidationError("The uploaded file is not a valid M4A audio file.")
+        if suffix == ".mp3" and not (
+            first_bytes.startswith(b"ID3")
+            or (
+                len(first_bytes) >= 2
+                and first_bytes[0] == 0xFF
+                and (first_bytes[1] & 0xE0) == 0xE0
+            )
+        ):
+            raise forms.ValidationError("The uploaded file is not a valid MP3 audio file.")
         return uploaded
 
     def clean_title(self):
@@ -358,6 +394,12 @@ class KnowledgeDocumentForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
+        if not cleaned.get("content") and cleaned.get("source_file"):
+            # The upload view replaces this temporary value with extracted
+            # text before persisting the document. The model still requires
+            # non-empty content during ModelForm validation.
+            cleaned["content"] = "Pending local extraction review."
+            self.instance.content = cleaned["content"]
         source_title = (cleaned.get("source_title") or "").strip()
         source_url = (cleaned.get("source_url") or "").strip()
         source_quote = (cleaned.get("source_quote") or "").strip()
@@ -411,8 +453,8 @@ class AIConfigurationForm(forms.ModelForm):
             ("", "Select an approved model"),
             ("local-synthetic-v1", "Local synthetic v1"),
             ("openai/gpt-oss-20b", "Groq: openai/gpt-oss-20b"),
-            ("llama-3.3-70b-versatile", "Groq: Llama 3.3 70B Versatile"),
-            ("llama-3.2-11b-vision-preview", "Groq Vision: Llama 3.2 11B Vision"),
+            ("openai/gpt-oss-120b", "Groq: OpenAI GPT-OSS 120B"),
+            ("qwen/qwen3.8-27b", "Groq: Qwen 3.8 27B"),
             ("gemini-1.5-flash", "Google Gemini: Gemini 1.5 Flash"),
             ("gemini-2.0-flash", "Google Gemini: Gemini 2.0 Flash"),
         ),
@@ -489,8 +531,8 @@ class AIConfigurationForm(forms.ModelForm):
             "synthetic": {"local-synthetic-v1"},
             "groq": {
                 "openai/gpt-oss-20b",
-                "llama-3.3-70b-versatile",
-                "llama-3.2-11b-vision-preview",
+                "openai/gpt-oss-120b",
+                "qwen/qwen3.8-27b",
             },
             "gemini": {
                 "gemini-1.5-flash",

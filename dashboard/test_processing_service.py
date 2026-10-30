@@ -3,12 +3,14 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
+from unittest.mock import patch
 
 from dashboard.extraction.processing_service import process_clinical_note
 from dashboard.models import (
     ClinicalNote,
     ClinicalProcessingRun,
     Encounter,
+    KnowledgeDocument,
     Patient,
 )
 
@@ -31,22 +33,30 @@ def empty_verification():
 
 
 class SyntheticExtractionProvider:
-    def extract(self, input_text):
+    def __init__(self):
+        self.reference_context = []
+
+    def extract(self, input_text, *, reference_context=()):
+        self.reference_context = list(reference_context)
         return empty_extraction()
 
 
 class SyntheticVerificationProvider:
-    def verify(self, original_note, extraction, coding):
+    def __init__(self):
+        self.reference_context = []
+
+    def verify(self, original_note, extraction, coding, *, reference_context=()):
+        self.reference_context = list(reference_context)
         return empty_verification()
 
 
 class FailingVerificationProvider:
-    def verify(self, original_note, extraction, coding):
+    def verify(self, original_note, extraction, coding, *, reference_context=()):
         raise RuntimeError("Synthetic internal failure details")
 
 
 class TimeoutVerificationProvider:
-    def verify(self, original_note, extraction, coding):
+    def verify(self, original_note, extraction, coding, *, reference_context=()):
         raise TimeoutError("Synthetic timeout details")
 
 
@@ -156,6 +166,67 @@ class ProcessingServiceTests(TestCase):
             "Synthetic timeout details",
             str(run.review_reasons),
         )
+
+    def test_processing_retrieves_approved_knowledge_and_persists_trace(self):
+        note = ClinicalNote.objects.create(
+            encounter=self.encounter,
+            version_number=2,
+            original_text="Assessment: hypertension. Current medication: lisinopril.",
+            created_by=self.doctor,
+        )
+        document = KnowledgeDocument.objects.create(
+            title="Hypertension treatment guideline",
+            content=(
+                "Hypertension treatment may include lisinopril and other "
+                "appropriate antihypertensive medicines."
+            ),
+            ingestion_status="published",
+            is_active=True,
+            created_by=self.doctor,
+        )
+        extraction_provider = SyntheticExtractionProvider()
+        verification_provider = SyntheticVerificationProvider()
+
+        run = process_clinical_note(
+            note,
+            self.doctor,
+            extraction_provider=extraction_provider,
+            verification_provider=verification_provider,
+        )
+        run.refresh_from_db()
+
+        self.assertEqual(run.knowledge_retrieval_status, "retrieved")
+        self.assertEqual(len(run.knowledge_references), 1)
+        self.assertEqual(
+            run.knowledge_references[0]["document_id"],
+            document.pk,
+        )
+        self.assertNotIn("text", run.knowledge_references[0])
+        self.assertEqual(
+            extraction_provider.reference_context[0]["document_id"],
+            document.pk,
+        )
+        self.assertEqual(
+            verification_provider.reference_context[0]["document_id"],
+            document.pk,
+        )
+
+    def test_retrieval_failure_does_not_stop_note_processing(self):
+        with patch(
+            "dashboard.extraction.processing_service.retrieve_knowledge_passages",
+            side_effect=RuntimeError("synthetic internal retrieval error"),
+        ):
+            run = process_clinical_note(
+                self.note,
+                self.doctor,
+                extraction_provider=SyntheticExtractionProvider(),
+                verification_provider=SyntheticVerificationProvider(),
+            )
+
+        run.refresh_from_db()
+        self.assertEqual(run.knowledge_retrieval_status, "unavailable")
+        self.assertEqual(run.knowledge_references, [])
+        self.assertEqual(run.status, ClinicalProcessingRun.Status.COMPLETED)
 
     def test_separate_invocations_create_separate_runs(self):
         providers = {

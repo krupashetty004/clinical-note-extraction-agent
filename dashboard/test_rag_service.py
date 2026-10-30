@@ -77,3 +77,34 @@ class RAGServiceTests(TestCase):
         top = results[0]
         self.assertEqual(top["document_id"], self.doc2.pk)
         self.assertIn("Metformin", top["text"])
+
+    def test_retrieval_excludes_active_uploads_waiting_for_review(self):
+        pending = KnowledgeDocument.objects.create(
+            title="Pending review asthma guidance",
+            content="Asthma management includes inhaled corticosteroids and monitoring.",
+            ingestion_status="needs_review",
+            is_active=True,
+            created_by=self.user,
+        )
+
+        results = retrieve_knowledge_passages("asthma inhaled corticosteroids")
+        self.assertNotIn(pending.pk, {row["document_id"] for row in results})
+
+    def test_retrieval_includes_explicitly_published_documents(self):
+        published = KnowledgeDocument.objects.create(
+            title="Published COPD guidance",
+            content="COPD care includes bronchodilator therapy and pulmonary rehabilitation.",
+            ingestion_status="published",
+            is_active=True,
+            created_by=self.user,
+        )
+
+        results = retrieve_knowledge_passages("COPD pulmonary rehabilitation")
+        self.assertIn(published.pk, {row["document_id"] for row in results})
+
+    def test_retrieval_rejects_invalid_limits_and_scores(self):
+        with self.assertRaises(ValueError):
+            retrieve_knowledge_passages("hypertension", top_k=0)
+        with self.assertRaises(ValueError):
+            retrieve_knowledge_passages("hypertension", min_score=1.5)
+
