@@ -303,6 +303,7 @@ def run_dataset_batch(
             )
         completed_ids = prediction_ids
 
+    previously_processed_count = len(predictions)
     extraction_provider = LocalClinicalExtractionProvider()
     verification_provider = LocalClinicalVerificationProvider()
 
@@ -401,7 +402,7 @@ def run_dataset_batch(
     return {
         "records_selected": len(selected_records),
         "records_processed": len(predictions),
-        "new_records_processed": len(selected_records) - len(completed_ids - set()),
+        "new_records_processed": len(predictions) - previously_processed_count,
         "predictions_path": str(predictions_path),
         "operations_path": str(operations_path),
         "report_path": str(report_path),
