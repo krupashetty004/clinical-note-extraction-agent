@@ -262,6 +262,14 @@ The current feature-branch implementation has connected a first lexical RAG path
 - The active configuration's credential/model/temperature/token limit are used by both extraction and verification adapters. Unsupported Gemini activation is blocked; the workflow does not silently change providers.
 - Actual Doctor-note processing through Groq requires both the local provider opt-in and the separate `MIRAI_EXTERNAL_CLINICAL_DATA_APPROVED=1` deployment gate. Keep that approval gate disabled until Mirai Labs has completed the formal privacy/security review. With a selected Groq configuration and a missing gate/key, the request is blocked with a visible user message.
 
+### Ingestion and external image processing boundary
+
+- Local image OCR is attempted first. The optional Groq vision path is gated by both the Groq environment opt-in and `MIRAI_EXTERNAL_CLINICAL_DATA_APPROVED=1`; it also requires an active tested Groq configuration using the configured vision-capable model `qwen/qwen3.8-27b`.
+- The image path does not use raw environment-key fallback or Gemini. A non-vision active model is not silently substituted.
+- Scanned PDFs do not yet have a local OCR pipeline. Audio ingestion currently writes a review placeholder and does not perform speech-to-text transcription. These paths must not be represented as completed multimodal transcription.
+- The public login page no longer displays demo credentials. The local app entry point runs migrations only and creates no accounts. Provision a superuser explicitly and use least-privilege Doctor/Administrator groups for routine use.
+- Legacy hardcoded demo credentials existed in earlier public commits. Removing them from current files does not remove them from repository history; any accounts created with those credentials must be checked and rotated/disabled manually.
+
 These limitations must remain visible in project reporting. A passing CI suite validates automated code contracts; it does not establish retrieval quality, clinical accuracy, or deployment approval.
 
 **Status:** Proposed revised architecture. It is not evidence of implementation or formal scope/provider approval.
