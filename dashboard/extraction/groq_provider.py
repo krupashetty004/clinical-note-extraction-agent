@@ -7,6 +7,7 @@ Use synthetic notes only until privacy/security approval is documented.
 from __future__ import annotations
 
 import json
+import math
 import os
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -80,6 +81,8 @@ class _GroqJSONProvider:
         client: Any | None = None,
         model: str | None = None,
         api_key: str | None = None,
+        temperature: float = 0.0,
+        max_completion_tokens: int = 2048,
     ) -> None:
         # Explicit client injection is for mocked tests. Normal construction
         # is gated and accepts the encrypted key resolved by AIConfiguration.
@@ -90,6 +93,25 @@ class _GroqJSONProvider:
         self._model = (model or configured_model or DEFAULT_GROQ_MODEL).strip()
         if not self._model:
             raise GroqProviderConfigurationError("GROQ_MODEL must not be blank.")
+        if (
+            isinstance(temperature, bool)
+            or not isinstance(temperature, (int, float))
+            or not math.isfinite(float(temperature))
+            or not 0 <= float(temperature) <= 2
+        ):
+            raise GroqProviderConfigurationError(
+                "temperature must be a finite number between 0 and 2."
+            )
+        if (
+            isinstance(max_completion_tokens, bool)
+            or not isinstance(max_completion_tokens, int)
+            or not 1 <= max_completion_tokens <= 8192
+        ):
+            raise GroqProviderConfigurationError(
+                "max_completion_tokens must be between 1 and 8192."
+            )
+        self._temperature = float(temperature)
+        self._max_completion_tokens = max_completion_tokens
 
     @property
     def model_id(self) -> str:
@@ -114,6 +136,8 @@ class _GroqJSONProvider:
                     },
                 ],
                 response_format=response_format or {"type": "json_object"},
+                temperature=self._temperature,
+                max_completion_tokens=self._max_completion_tokens,
             )
         except TimeoutError:
             raise GroqProviderError(
