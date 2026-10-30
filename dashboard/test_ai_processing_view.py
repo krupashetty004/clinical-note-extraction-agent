@@ -164,6 +164,60 @@ class AIProcessingViewTests(TestCase):
             ClinicalProcessingRun.objects.filter(clinical_note=self.note).exists()
         )
 
+    @override_settings(
+        GROQ_PROVIDER_ENABLED=True,
+        EXTERNAL_CLINICAL_DATA_APPROVED=True,
+    )
+    @patch("dashboard.extraction.groq_provider.GroqExtractionProvider")
+    @patch("dashboard.extraction.groq_provider.GroqVerificationProvider")
+    def test_approved_groq_route_uses_encrypted_key_selected_model_and_parameters(
+        self,
+        mock_verification_class,
+        mock_extraction_class,
+    ):
+        configuration = AIConfiguration.objects.create(
+            provider="groq",
+            model="qwen/qwen3.8-27b",
+            temperature="0.25",
+            max_tokens=1536,
+            created_by=self.doctor,
+            is_active=True,
+        )
+        configuration.set_api_key("gsk-encrypted-config-key")
+        configuration.save()
+
+        mock_extraction_class.return_value.extract.return_value = {
+            "items": [],
+            "needs_review": False,
+            "review_reasons": [],
+        }
+        mock_verification_class.return_value.verify.return_value = {
+            "item_checks": [],
+            "potential_omissions": [],
+            "needs_review": False,
+            "review_reasons": [],
+        }
+
+        with patch.dict("os.environ", {"GROQ_API_KEY": ""}):
+            response = self.client.post(
+                reverse("dashboard:run_ai_processing", kwargs={"note_id": self.note.pk}),
+            )
+
+        self.assertEqual(response.status_code, 302)
+        expected_provider_options = {
+            "api_key": "gsk-encrypted-config-key",
+            "model": "qwen/qwen3.8-27b",
+            "temperature": 0.25,
+            "max_completion_tokens": 1536,
+        }
+        mock_extraction_class.assert_called_once_with(**expected_provider_options)
+        mock_verification_class.assert_called_once_with(**expected_provider_options)
+        run = ClinicalProcessingRun.objects.filter(
+            clinical_note=self.note,
+        ).latest("created_at")
+        self.assertEqual(run.status, ClinicalProcessingRun.Status.COMPLETED)
+        self.assertEqual(run.execution_mode, ClinicalProcessingRun.ExecutionMode.AI_AGENT)
+
     # ------------------------------------------------------------------
     # Access control
     # ------------------------------------------------------------------
