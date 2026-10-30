@@ -41,7 +41,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--resume",
             action="store_true",
-            help="Skip case IDs already present in both existing output JSONL files.",
+            help="Continue from the atomic results.jsonl checkpoint.",
         )
         parser.add_argument(
             "--overwrite",
