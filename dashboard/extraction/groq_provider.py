@@ -37,15 +37,21 @@ class GroqProviderError(RuntimeError):
         self.code = code
 
 
-def _build_groq_client() -> Any:
-    """Construct the SDK client only after explicit opt-in and key setup."""
+def _build_groq_client(api_key: str | None = None) -> Any:
+    """Construct the SDK client using an explicitly supplied or env key."""
+
     if not getattr(settings, "GROQ_PROVIDER_ENABLED", False):
         raise GroqProviderConfigurationError(
             "Groq provider is disabled; explicitly enable it for a local synthetic test."
         )
 
-    api_key = os.environ.get("GROQ_API_KEY", "").strip()
-    if not api_key:
+    configured_api_key = (
+        api_key
+        if api_key is not None
+        else os.environ.get("GROQ_API_KEY", "")
+    )
+    configured_api_key = configured_api_key.strip()
+    if not configured_api_key:
         raise GroqProviderConfigurationError(
             "GROQ_API_KEY is not configured in the process environment."
         )
@@ -60,7 +66,7 @@ def _build_groq_client() -> Any:
     try:
         # Retries are controlled by the existing workflow, not by two hidden
         # SDK retries layered underneath it. Never log client/request details.
-        return Groq(api_key=api_key, max_retries=0, timeout=30.0)
+        return Groq(api_key=configured_api_key, max_retries=0, timeout=30.0)
     except Exception as exc:
         raise GroqProviderConfigurationError(
             "The Groq client could not be initialized."
@@ -68,10 +74,18 @@ def _build_groq_client() -> Any:
 
 
 class _GroqJSONProvider:
-    def __init__(self, *, client: Any | None = None, model: str | None = None) -> None:
-        # Explicit client injection is for mocked tests only; normal construction
-        # is gated and requires an explicitly configured API key.
-        self._client = client if client is not None else _build_groq_client()
+    def __init__(
+        self,
+        *,
+        client: Any | None = None,
+        model: str | None = None,
+        api_key: str | None = None,
+    ) -> None:
+        # Explicit client injection is for mocked tests. Normal construction
+        # is gated and accepts the encrypted key resolved by AIConfiguration.
+        self._client = (
+            client if client is not None else _build_groq_client(api_key=api_key)
+        )
         configured_model = getattr(settings, "GROQ_MODEL", DEFAULT_GROQ_MODEL)
         self._model = (model or configured_model or DEFAULT_GROQ_MODEL).strip()
         if not self._model:
