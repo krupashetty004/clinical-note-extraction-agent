@@ -53,7 +53,7 @@
                         <dt class="col-sm-5">Tokens remaining</dt><dd class="col-sm-7">{{ active_configuration.remaining_tokens }} / {{ active_configuration.token_limit }}</dd>
                     </dl>
                     {% else %}
-                    <p class="text-muted mb-0">No configuration is active. Processing must remain deferred until an approved configuration is activated.</p>
+                    <p class="text-muted mb-0">No provider configuration is active. The Doctor workflow uses the local offline rules provider until another provider is explicitly tested, approved, and activated.</p>
                     {% if usage_configuration %}
                     <p class="small mt-2 mb-0">Requests remaining: {{ usage_configuration.remaining_requests }} · Tokens remaining: {{ usage_configuration.remaining_tokens }}.</p>
                     {% endif %}
@@ -77,7 +77,7 @@
             <div class="card shadow-sm border-0">
                 <div class="card-body">
                     <h2 class="h5">Credential status</h2>
-                    <p class="mb-0">{% if provider_key_configured %}A Groq deployment key is configured in the process environment.{% else %}No Groq deployment key is configured in this draft.{% endif %} Raw keys are never displayed or logged.</p>
+                    <p class="mb-0">{% if provider_key_configured %}A Groq key is configured in the encrypted settings record or process environment.{% else %}No Groq key is configured in the active configuration or draft.{% endif %} Raw keys are never displayed or logged.</p>
                 </div>
             </div>
         </div>
