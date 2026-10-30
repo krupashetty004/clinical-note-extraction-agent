@@ -344,17 +344,6 @@ class KnowledgeDocumentForm(forms.ModelForm):
                 raise forms.ValidationError("Embedded scripts are not allowed in knowledge-base content.")
         return cleaned
 
-    def clean(self):
-        cleaned = super().clean()
-        if not cleaned.get("content") and cleaned.get("source_file"):
-            # Model validation requires content; the upload view replaces this
-            # placeholder with extracted text before saving the document.
-            cleaned["content"] = "Pending local extraction review."
-            self.instance.content = cleaned["content"]
-        elif not cleaned.get("content"):
-            self.add_error("content", "Enter content or upload a supported source file.")
-        return cleaned
-
     def clean_source_file(self):
         uploaded = self.cleaned_data.get("source_file")
         if not uploaded:
