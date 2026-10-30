@@ -13,8 +13,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Local development only. Production must provide DJANGO_SECRET_KEY.
 DJANGO_ENV = os.environ.get("DJANGO_ENV", "development").strip().lower()
 IS_RENDER = "RENDER" in os.environ
+IS_PRODUCTION = DJANGO_ENV == "production" or IS_RENDER
 NEON_OBJECT_STORAGE_ENABLED = neon_object_storage_enabled(os.environ)
-DEFAULT_DEBUG = "0" if DJANGO_ENV == "production" or IS_RENDER else "1"
+DEFAULT_DEBUG = "0" if IS_PRODUCTION else "1"
 DEBUG = (
     os.environ.get("DJANGO_DEBUG", DEFAULT_DEBUG).strip().lower()
     in {"1", "true", "yes"}

@@ -1050,7 +1050,7 @@ def knowledge_document_new(request: HttpRequest) -> HttpResponse:
             uploaded = form.cleaned_data.get("source_file")
             if (
                 uploaded
-                and not settings.DEBUG
+                and settings.IS_PRODUCTION
                 and not settings.NEON_OBJECT_STORAGE_ENABLED
             ):
                 form.add_error(
@@ -1153,7 +1153,7 @@ def knowledge_document_edit(request: HttpRequest, doc_id: int) -> HttpResponse:
             uploaded = form.cleaned_data.get("source_file")
             if (
                 uploaded
-                and not settings.DEBUG
+                and settings.IS_PRODUCTION
                 and not settings.NEON_OBJECT_STORAGE_ENABLED
             ):
                 form.add_error(

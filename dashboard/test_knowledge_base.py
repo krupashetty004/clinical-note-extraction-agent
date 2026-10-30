@@ -483,8 +483,8 @@ class KnowledgeBaseTests(TestCase):
         self.assertIn("/login/", response.url)
 
     @override_settings(
-        DEBUG=False,
-        SECURE_SSL_REDIRECT=False,
+        DEBUG=True,
+        IS_PRODUCTION=True,
         NEON_OBJECT_STORAGE_ENABLED=False,
     )
     def test_production_rejects_source_upload_when_persistent_storage_is_disabled(self):
