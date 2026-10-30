@@ -1113,7 +1113,7 @@ def _ai_configuration_fingerprint(configuration: AIConfiguration) -> str:
     payload = {
         "provider": configuration.provider,
         "model": configuration.model,
-        "temperature": str(configuration.temperature),
+        "temperature": format(configuration.temperature, ".2f"),
         "max_tokens": configuration.max_tokens,
         "api_key_sha256": hashlib.sha256(api_key.encode("utf-8")).hexdigest()
         if api_key else "",
@@ -1291,6 +1291,7 @@ def settings_page(request: HttpRequest) -> HttpResponse:
             "provider_key_configured": bool(
                 os.environ.get("GROQ_API_KEY", "").strip()
                 or (draft and draft.has_api_key())
+                or (active_configuration and active_configuration.has_api_key())
             ),
             "usage_configuration": active_configuration or draft,
         },
