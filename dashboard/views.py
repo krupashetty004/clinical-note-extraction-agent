@@ -1246,7 +1246,11 @@ def settings_page(request: HttpRequest) -> HttpResponse:
                         configuration.tested_fingerprint = ""
                         configuration.tested_at = None
                         configuration.save()
-                        form.add_error(None, configuration.last_test_result)
+                        form.add_error(
+                            None,
+                            "Test this configuration successfully before activation. "
+                            + configuration.last_test_result,
+                        )
                         test_result = configuration.last_test_result
                     else:
                         AIConfiguration.objects.filter(is_active=True).exclude(
