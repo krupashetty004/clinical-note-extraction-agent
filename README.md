@@ -107,9 +107,12 @@ To use the built-in synthetic data demo (no real notes needed), set `MIRAI_ENABL
 
 Go to **Knowledge Base → Upload Document** to add clinical guidelines, protocols, or reference documents (`.txt`, `.pdf`, `.md`, `.wav`, `.mp3`).
 
-- Text and selectable-text PDF ingestion are implemented. Scanned-PDF OCR is not yet implemented.
-- Image uploads try local Tesseract OCR first. External Groq vision transcription is blocked unless the separate clinical-data approval gate is enabled and the active tested Groq model is the configured vision-capable model. There is no environment-key or Gemini fallback.
-- Audio uploads currently create a review placeholder; they are not transcribed with a speech-to-text model. Do not publish placeholder content as clinical reference material.
+- Text files and selectable-text PDFs are extracted locally. Scanned PDFs are rendered locally with PDFium and OCR is attempted through Tesseract; an approved Groq vision fallback is available for up to 10 scanned pages. Each file is limited to 10 MB and PDFs to 100 pages.
+- Image uploads try local Tesseract OCR first, then the same gated Groq vision path. No environment-key or Gemini fallback is permitted.
+- Audio uploads (.wav, .mp3, .m4a, .ogg) use Groq's dedicated `whisper-large-v3-turbo` speech-to-text model only when both `MIRAI_ENABLE_GROQ_PROVIDER=1` and `MIRAI_EXTERNAL_CLINICAL_DATA_APPROVED=1` are enabled, and an active Groq credential has passed the synthetic configuration test. Audio uses this dedicated speech model rather than the chat/extraction model selected in Settings.
+- OCR/audio results are drafts. For clinical-note uploads, the first submission populates the note editor and is rejected until the doctor reviews/corrects the transcription and submits again without re-uploading. Knowledge Base uploads remain inactive with `needs_review` until corrected and explicitly published.
+- If a local or approved transcription path is unavailable, the upload is rejected with an actionable error. It never inserts a filename or placeholder as transcribed clinical text.
+- Local scanned-PDF OCR requires the Tesseract executable to be installed and available on `PATH`; the Python dependencies include PyPDFium2 and Pillow. Verify the local Tesseract installation with `tesseract --version`.
 - Local lexical RAG retrieval is connected to the Doctor clinical-note processing workflow. It selects up to three active manually entered or explicitly published passages and passes them separately from the original note to compatible providers.
 - Uploaded documents remain inactive and excluded while `needs_review`; a doctor/administrator must review and publish them before retrieval.
 - Retrieved document/version/chunk citations and scores are persisted with the processing run and shown in its detail page/export.
