@@ -430,6 +430,19 @@ class ClinicalProcessingRun(models.Model):
     extraction_result = models.JSONField(null=True, blank=True)
     coding_result = models.JSONField(null=True, blank=True)
     verification_result = models.JSONField(null=True, blank=True)
+    # Trace the approved reference passages supplied to the agent. This is
+    # metadata only; the retrieved text remains in the prompt at execution time.
+    knowledge_references = models.JSONField(default=list, blank=True)
+    knowledge_retrieval_status = models.CharField(
+        max_length=20,
+        default="not_attempted",
+        choices=(
+            ("not_attempted", "Not attempted"),
+            ("no_matches", "No matching references"),
+            ("retrieved", "References retrieved"),
+            ("unavailable", "Retrieval unavailable"),
+        ),
+    )
     item_dispositions = models.JSONField(default=list, blank=True)
     review_reasons = models.JSONField(default=list, blank=True)
     review_decision = models.CharField(
