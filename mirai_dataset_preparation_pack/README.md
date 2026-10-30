@@ -17,7 +17,7 @@ MTSamples is a useful real-text, multi-specialty corpus for ingestion testing, s
 
 - It can support a real-source transcription corpus and specialty-label coverage checks.
 - It cannot, by itself, establish the SOW's entity F1, evidence-faithfulness, status-accuracy, contradiction-detection, rare-diagnosis abstention, or note-to-code top-3 accuracy targets.
-- The generated 100-note file is an **annotation queue**, not a labelled gold dataset. All annotations start as unreviewed / null. Qualified human annotation and adjudication are still required for gold evaluation.
+- The generated 100-note file is an **annotation queue**, not a labelled gold dataset. All annotations start as unreviewed / null. AI-generated labels may be used as provisional silver labels for agreement tests only; they are not independent gold.
 - Do not interpret it as fully privacy-cleared merely because the data card has a public-domain license. Inspect the downloaded text locally for potential personal information, and never send the text to an external AI API.
 
 ## One-time setup on Windows
@@ -60,7 +60,7 @@ The full note text exists only in local working files. The reports do not includ
 
 ### Use the prepared queue in the clinical extraction workflow
 
-The Doctor annotation page uses the generated local queue automatically. The saved draft is kept in `.dataset_working\\annotations\\.annotation_working_queue.jsonl`; the tracked template is not overwritten.
+The Doctor annotation page reads only the generated local queue under `.dataset_working\\annotations\\`. Drafts are saved to `.dataset_working\\annotations\\.annotation_working_queue.jsonl`. There is no tracked-template fallback, and source note text is never stored in Django sessions.
 
 For ICD-10 coding, import the supplied reference into your local Django database once if the table is empty:
 
@@ -90,7 +90,7 @@ This command never selects Groq, Gemini, or another external provider. It does n
 
 Use `--resume` to continue from the checkpoint after interruption, or `--overwrite` to start the batch outputs again. Do not commit these files because they contain note-linked extraction content.
 
-The queue contains no trusted clinical gold labels by default. The batch report therefore marks clinical accuracy as **NOT EVALUATED** unless all selected records have qualified, independently sourced labels and the evaluation checks pass.
+The queue contains no trusted clinical gold labels by default. The batch report therefore marks clinical accuracy as **NOT EVALUATED** unless all selected records have independently qualified gold labels, required specialty coverage, and passing evaluation checks. Model-generated labels are not eligible for clinical-gold metrics.
 
 Validate the generated queue after trusted annotations have actually been supplied:
 

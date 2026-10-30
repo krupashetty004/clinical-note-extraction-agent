@@ -2,6 +2,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 
 from django.contrib import messages
@@ -711,9 +712,16 @@ def annotation_queue(request: HttpRequest) -> HttpResponse:
     adjudicated = sum(
         1
         for record in queue
-        if not _validate_record_for_export(record)
+        if record.get("annotation_complete")
+        and not _validate_record_for_export(record)
         and record.get("label_source") in {"human_annotated", "external_gold_standard"}
     )
+    for record in queue:
+        record["gold_qualified"] = bool(
+            record.get("annotation_complete")
+            and not _validate_record_for_export(record)
+            and record.get("label_source") in {"human_annotated", "external_gold_standard"}
+        )
     progress = {
         "prepared": len(queue),
         "annotated": completed,

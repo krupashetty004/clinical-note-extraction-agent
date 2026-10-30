@@ -316,7 +316,7 @@ class LocalAnnotationInterfaceTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["status"], "blocked")
 
-    def test_valid_export_returns_jsonl_payload_for_ready_record(self):
+    def test_completed_manual_draft_is_not_exported_as_clinical_gold(self):
         queue = self.client.get(reverse("dashboard:annotation_queue")).context["queue"]
         note = queue[0]
         note_id = note["record_id"]
@@ -361,10 +361,12 @@ class LocalAnnotationInterfaceTests(TestCase):
         )
 
         response = self.client.post(reverse("dashboard:annotation_export"))
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response["Content-Type"], "application/jsonl; charset=utf-8")
-        content = response.content.decode("utf-8")
-        self.assertIn(f'"record_id": "{note_id}"', content)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["status"], "blocked")
+        self.assertIn(
+            "no independently qualified gold-label source",
+            " ".join(response.json()["invalid_records"][0]["errors"]).lower(),
+        )
 
     def _setup_mtsamples_records(self):
         records = [

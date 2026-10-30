@@ -22,6 +22,10 @@
     </div>
     {% endif %}
 
+    <div class="alert alert-info" role="status">
+        Marking this draft complete does not make it clinical gold. Clinical-gold evaluation requires qualified independent annotation provenance and adjudication. AI-generated labels are never clinical gold.
+    </div>
+
     {% if validation_errors %}
     <div class="alert alert-warning" role="alert">
         <strong>Validation warning:</strong>
@@ -86,7 +90,7 @@
                     <strong>Annotation form</strong>
                     <div class="form-check form-switch">
                         {{ form.annotation_complete }}
-                        <label class="form-check-label" for="{{ form.annotation_complete.id_for_label }}">Complete gold annotation</label>
+                        <label class="form-check-label" for="{{ form.annotation_complete.id_for_label }}">Mark draft complete</label>
                     </div>
                 </div>
                 <div class="card-body">

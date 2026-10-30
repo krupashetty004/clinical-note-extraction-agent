@@ -66,15 +66,9 @@ def validate_record(
         errors.append(prefix + "record_id must be a non-empty string")
     if not isinstance(record.get("specialty"), str) or not record["specialty"].strip():
         errors.append(prefix + "specialty must be a non-empty string")
-    if (
-        isinstance(record.get("source_row_number"), bool)
-        or not isinstance(record.get("source_row_number"), int)
-        or record["source_row_number"] < 1
-    ):
-        errors.append(prefix + "source_row_number must be a positive integer")
     if record.get("source_dataset") == SOURCE_ID:
         match = re.fullmatch(
-            r"mtsamples-(\\d{5})-[0-9a-f]{16}",
+            r"mtsamples-(\d{5})-[0-9a-f]{16}",
             str(record.get("record_id", "")),
         )
         if not match or int(match.group(1)) != record.get("source_row_number"):

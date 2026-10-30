@@ -81,8 +81,10 @@
                         {% else %}
                         <span class="badge text-bg-secondary">Draft</span>
                         {% endif %}
-                        {% if record.adjudication_status == 'adjudicated' %}
-                        <span class="badge text-bg-info ms-1">Adjudicated</span>
+                        {% if record.gold_qualified %}
+                        <span class="badge text-bg-success ms-1">Qualified gold</span>
+                        {% elif record.annotation_complete %}
+                        <span class="badge text-bg-warning ms-1">Not gold-qualified</span>
                         {% endif %}
                     </div>
                 </div>

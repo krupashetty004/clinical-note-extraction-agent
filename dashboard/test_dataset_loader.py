@@ -51,6 +51,45 @@ class DatasetLoaderTests(SimpleTestCase):
         self.assertTrue(result.errors)
         self.assertNotIn(note, " ".join(result.errors))
 
+    def test_mtsamples_record_id_must_match_source_row(self):
+        path = self._write(
+            [
+                {
+                    "record_id": "mtsamples-00002-0123456789abcdef",
+                    "source_dataset": "kaggle:tboyle10/medicaltranscriptions",
+                    "source_url": "https://www.kaggle.com/datasets/tboyle10/medicaltranscriptions/data",
+                    "source_row_number": 3,
+                    "specialty": "Synthetic Specialty",
+                    "note_text": "Synthetic assessment note.",
+                }
+            ]
+        )
+
+        result = load_jsonl(path, required_fields=REQUIRED_RECORD_FIELDS)
+
+        self.assertEqual(result.records, ())
+        self.assertTrue(any("does not match source_row_number" in error for error in result.errors))
+
+    def test_duplicate_source_rows_are_rejected_even_with_distinct_ids(self):
+        common = {
+            "source_dataset": "synthetic:mirai-test",
+            "source_url": "https://example.invalid/synthetic",
+            "source_row_number": 1,
+            "specialty": "Synthetic Specialty",
+            "note_text": "Synthetic assessment note.",
+        }
+        path = self._write(
+            [
+                {"record_id": "synthetic-1", **common},
+                {"record_id": "synthetic-2", **common},
+            ]
+        )
+
+        result = load_jsonl(path, required_fields=REQUIRED_RECORD_FIELDS)
+
+        self.assertEqual(len(result.records), 1)
+        self.assertTrue(any("duplicate source row" in error for error in result.errors))
+
     def test_readiness_requires_eligible_completed_annotations(self):
         path = self._write(
             [
