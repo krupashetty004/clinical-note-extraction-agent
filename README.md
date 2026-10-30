@@ -128,7 +128,32 @@ The analyzer prepares a full normalized local corpus, a deterministic 100-note s
 
 The 100-note queue starts unannotated. MTSamples specialty labels and keywords are not gold entity annotations. Never mark automatically generated labels as human gold or independently adjudicated. AI-generated labels may be tracked separately as provisional benchmark labels, not clinical gold.
 
-The annotation UI currently uses its repository-backed template and a separate local working queue; integration of the newly prepared CSV queue into the live workflow is still pending.
+The Doctor annotation workspace loads the locally prepared queue when it exists and saves drafts beside that queue. The tracked template remains a fallback only. The source CSV, normalized records, annotation queue, and working drafts stay in the ignored `.dataset_working/\` directory.
+
+### Process the prepared dataset through the clinical agent
+
+First check that the local ICD-10-CM table is populated. On a fresh local database, import the repository's reference file once:
+
+```powershell
+python manage.py import_icd10 --source data\\reference\\icd10cm-codes-2027.txt --apply
+```
+
+Then inspect the dataset status and process the 100-record queue:
+
+```powershell
+python manage.py dataset_status
+python manage.py process_mtsamples_dataset --limit 100
+```
+
+The batch command always uses the local dictionary extraction and verification providers. It reuses the same extraction, ICD-10 candidate retrieval, verification, reconciliation, bounded retry and abstention workflow, but does not create patient/encounter records or clinical processing runs.
+
+Outputs are written only under `.dataset_working\\runs\\mtsamples\\`:
+- `predictions.jsonl` — structured entity results, evidence offsets, ICD-10 candidates, and source IDs.
+- `operations.jsonl` — status, duration, bounded attempt counts, provider identity and safe failure codes.
+- `results.jsonl` — atomic per-note checkpoint used by the resume option.
+- `report.json` — aggregate processing totals and an evaluation status.
+
+Resume an interrupted batch with `--resume`; deliberately replace outputs with `--overwrite`. The batch does not call external AI providers. It does not claim clinical accuracy when qualified gold labels are unavailable.
 
 ---
 
