@@ -269,7 +269,7 @@ class ExportProcessingRunViewTests(TestCase):
         )
         payload = json.loads(response.content)
         for key in ("export_type", "run_id", "execution_mode", "patient", "encounter",
-                    "clinical_note", "extraction_result", "review"):
+                    "clinical_note", "extraction_result", "knowledge_retrieval", "review"):
             self.assertIn(key, payload, f"Missing key: {key}")
 
     def test_export_execution_mode_is_ai_agent(self):
