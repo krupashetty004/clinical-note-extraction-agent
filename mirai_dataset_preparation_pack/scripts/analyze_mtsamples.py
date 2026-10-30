@@ -19,9 +19,12 @@ from typing import Any
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INPUT = PACKAGE_ROOT / "data" / "external" / "mtsamples" / "raw" / "mtsamples.csv"
-DEFAULT_PREPARED = PACKAGE_ROOT / "data" / "external" / "mtsamples" / "prepared"
-DEFAULT_ANNOTATIONS = PACKAGE_ROOT / "data" / "external" / "mtsamples" / "annotations"
-DEFAULT_REPORTS = PACKAGE_ROOT / "reports"
+# Keep generated note-level datasets and queues outside tracked/public paths.
+# The raw source CSV remains at DEFAULT_INPUT and must not be committed.
+LOCAL_DATA_ROOT = PACKAGE_ROOT.parent / ".dataset_working"
+DEFAULT_PREPARED = LOCAL_DATA_ROOT / "prepared"
+DEFAULT_ANNOTATIONS = LOCAL_DATA_ROOT / "annotations"
+DEFAULT_REPORTS = LOCAL_DATA_ROOT / "reports"
 SOURCE_URL = "https://www.kaggle.com/datasets/tboyle10/medicaltranscriptions/data"
 SOURCE_ID = "kaggle:tboyle10/medicaltranscriptions"
 
