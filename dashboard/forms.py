@@ -405,6 +405,12 @@ class KnowledgeDocumentForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
+        if not cleaned.get("content") and cleaned.get("source_file"):
+            # The upload view replaces this temporary value with extracted
+            # text before persisting the document. The model still requires
+            # non-empty content during ModelForm validation.
+            cleaned["content"] = "Pending local extraction review."
+            self.instance.content = cleaned["content"]
         source_title = (cleaned.get("source_title") or "").strip()
         source_url = (cleaned.get("source_url") or "").strip()
         source_quote = (cleaned.get("source_quote") or "").strip()
