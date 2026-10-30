@@ -348,6 +348,8 @@ class LocalClinicalVerificationProvider:
         original_note: str,
         extraction: ExtractionResult,
         coding: DiagnosisCodingBatch,
+        *,
+        reference_context: Sequence[Mapping[str, Any]] = (),
     ) -> dict[str, Any]:
         if not isinstance(original_note, str):
             raise TypeError("original_note must be a string.")
