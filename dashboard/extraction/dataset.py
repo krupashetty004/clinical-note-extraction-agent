@@ -7,6 +7,7 @@ validates their envelope and provenance without logging note text.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
@@ -99,6 +100,7 @@ def load_jsonl(
     records: list[DatasetRecord] = []
     errors: list[str] = []
     seen_ids: set[str] = set()
+    seen_source_rows: set[tuple[str, int]] = set()
 
     try:
         lines = _read_lines(path)
@@ -140,8 +142,10 @@ def load_jsonl(
                 if len(errors) < max_errors:
                     errors.append(f"line {line_number} ({record_id}): invalid note_text")
                 continue
-            if not isinstance(value["source_row_number"], int) or isinstance(
-                value["source_row_number"], bool
+            if (
+                not isinstance(value["source_row_number"], int)
+                or isinstance(value["source_row_number"], bool)
+                or value["source_row_number"] < 1
             ):
                 if len(errors) < max_errors:
                     errors.append(
@@ -157,8 +161,24 @@ def load_jsonl(
                         f"line {line_number} ({record_id}): invalid provenance fields"
                     )
                 continue
+            source_key = (value["source_dataset"], value["source_row_number"])
+            if source_key in seen_source_rows:
+                if len(errors) < max_errors:
+                    errors.append(
+                        f"line {line_number} ({record_id}): duplicate source row"
+                    )
+                continue
+            if value["source_dataset"] == "kaggle:tboyle10/medicaltranscriptions":
+                match = re.fullmatch(r"mtsamples-(\\d{5})-[0-9a-f]{16}", record_id)
+                if not match or int(match.group(1)) != value["source_row_number"]:
+                    if len(errors) < max_errors:
+                        errors.append(
+                            f"line {line_number} ({record_id}): record ID does not match source_row_number"
+                        )
+                    continue
 
             seen_ids.add(record_id)
+            seen_source_rows.add(source_key)
             records.append(
                 DatasetRecord(
                     record_id=record_id,
@@ -260,6 +280,9 @@ def annotation_readiness(result: DatasetLoadResult) -> dict[str, Any]:
         for record in result.records
         if _is_complete_ai_benchmark_record(record.metadata)
     ]
+    specialty_count = len(
+        {record.specialty for record in result.records if record.specialty}
+    )
     return {
         "path": str(result.path),
         "records_loaded": len(result.records),
@@ -273,11 +296,12 @@ def annotation_readiness(result: DatasetLoadResult) -> dict[str, Any]:
             and not result.errors
             and len(ai_benchmark_records) == len(result.records)
         ),
-        "specialties_in_queue": len(
-            {record.specialty for record in result.records if record.specialty}
-        ),
+        "specialties_in_queue": specialty_count,
+        "minimum_specialties_required": 10,
+        "specialty_coverage_met": specialty_count >= 10,
         "gold_evaluation_ready": bool(result.records)
         and not result.errors
+        and specialty_count >= 10
         and len(eligible) == len(result.records),
     }
 

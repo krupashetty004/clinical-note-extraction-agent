@@ -8,13 +8,26 @@
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
         <div>
             <h1 class="h3 mb-1">Local annotation queue</h1>
-            <p class="text-muted mb-0">{{ progress.prepared }}-note queue across multiple specialties with provenance preserved.</p>
+            <p class="text-muted mb-0">{{ progress.prepared }}-note local queue · {{ progress.specialties }} specialties. Source notes stay outside browser sessions.</p>
         </div>
+        {% if queue %}
         <div class="btn-group" role="group" aria-label="Annotation actions">
-            <a class="btn btn-primary" href="{% url 'dashboard:annotation_export' %}">Validate & export</a>
+            <a class="btn btn-primary" href="{% url 'dashboard:annotation_export' %}">Validate & export qualified gold</a>
         </div>
+        {% endif %}
     </div>
 
+    {% if queue_error %}
+    <div class="alert alert-danger" role="alert">
+        <strong>Annotation queue could not be loaded.</strong> {{ queue_error }}
+    </div>
+    {% elif not queue %}
+    <div class="alert alert-info" role="status">
+        <strong>No local annotation queue is prepared.</strong>
+        <p class="mb-2">The application never falls back to clinical notes committed in Git. Download and review the approved source dataset locally, then run the dataset analyzer to create the queue under the ignored <code>.dataset_working/annotations/</code> directory.</p>
+        <code>python .\mirai_dataset_preparation_pack\scripts\analyze_mtsamples.py</code>
+    </div>
+    {% else %}
     <div class="row g-3 mb-4">
         <div class="col-md-3">
             <div class="card shadow-sm border-0 h-100">
@@ -82,5 +95,6 @@
             {% endfor %}
         </div>
     </div>
+    {% endif %}
 </div>
 {% endblock %}

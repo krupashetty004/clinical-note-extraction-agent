@@ -203,10 +203,11 @@ class ProcessingRunReviewForm(forms.Form):
 class LocalAnnotationForm(forms.Form):
     """Capture a local annotation draft while preserving source provenance."""
 
-    record_id = forms.CharField(widget=forms.HiddenInput())
+    record_id = forms.CharField(widget=forms.HiddenInput(), disabled=True)
     specialty = forms.CharField(
         max_length=80,
         widget=forms.TextInput(attrs={"class": "form-control"}),
+        disabled=True,
     )
     note_text = forms.CharField(
         widget=forms.Textarea(
@@ -215,18 +216,21 @@ class LocalAnnotationForm(forms.Form):
                 "class": "form-control font-monospace",
                 "readonly": "readonly",
             }
-        )
+        ),
+        disabled=True,
     )
-    source_dataset = forms.CharField(required=False, widget=forms.HiddenInput())
-    source_url = forms.CharField(required=False, widget=forms.HiddenInput())
+    source_dataset = forms.CharField(required=False, widget=forms.HiddenInput(), disabled=True)
+    source_url = forms.CharField(required=False, widget=forms.HiddenInput(), disabled=True)
     source_row_number = forms.IntegerField(
         min_value=1,
         required=False,
         widget=forms.NumberInput(attrs={"class": "form-control"}),
+        disabled=True,
     )
     source_keywords = forms.CharField(
         required=False,
         widget=forms.Textarea(attrs={"rows": 3, "class": "form-control"}),
+        disabled=True,
     )
     diagnoses = _JsonListField()
     procedures = _JsonListField()

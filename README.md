@@ -137,7 +137,9 @@ The analyzer prepares a full normalized local corpus, a deterministic 100-note s
 
 The 100-note queue starts unannotated. MTSamples specialty labels and keywords are not gold entity annotations. Never mark automatically generated labels as human gold or independently adjudicated. AI-generated labels may be tracked separately as provisional benchmark labels, not clinical gold.
 
-The Doctor annotation workspace loads the locally prepared queue when it exists and saves drafts beside that queue. The tracked template remains a fallback only. The source CSV, normalized records, annotation queue, and working drafts stay in the ignored `.dataset_working/\` directory.
+The Doctor annotation workspace reads only the locally prepared queue under `.dataset_working/annotations/` and saves drafts to an ignored working file in that directory. It does not fall back to a note-bearing file tracked in Git. If the local queue is missing, the page explains how to prepare it. Source note text and annotations are never stored in Django sessions.
+
+The annotation form treats source note text and provenance as immutable. Marking a draft complete does not make it clinical gold. Clinical-gold export requires qualified label provenance, independent adjudication, and source-span validation. Model-generated labels remain provisional/silver benchmark material and are never clinical gold.
 
 ### Process the prepared dataset through the clinical agent
 
@@ -256,7 +258,8 @@ Set these in a `.env` file at the project root (never commit it).
 
 - This repository is currently public. Treat every committed file as publicly accessible.
 - Never commit the raw MTSamples CSV, normalized note-level records, annotation queues containing note text, the SOW, patient data, API keys, or uploaded files.
-- Keep raw and generated dataset files in the Git-ignored local `.dataset_working/` directory.
+- Keep raw and generated dataset files in the Git-ignored local `.dataset_working/` directory. The tracked repository contains only an empty `.gitkeep` in the source annotation folder.
+- Removing a sensitive file from the latest branch does not erase earlier Git history. Treat prior historical copies as exposed until repository history is reviewed and appropriately remediated.
 - The public demo must use synthetic patient data only.
 - No default demo usernames/passwords are stored in source code or exposed on the login page. Provision accounts explicitly; use a separate least-privilege Doctor account for routine work.
 - Never bootstrap users with known passwords or grant administrator roles automatically.

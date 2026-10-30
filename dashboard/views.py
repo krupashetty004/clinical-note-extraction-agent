@@ -68,24 +68,14 @@ ANNOTATION_WORKING_QUEUE_FILENAME = ".annotation_working_queue.jsonl"
 
 
 def _annotation_template_path() -> Path:
-    """Prefer the uploaded CSV's locally prepared queue; fall back to the tracked template."""
+    """Return the ignored, locally prepared queue; never fall back to tracked data."""
     repo_root = Path(settings.BASE_DIR).resolve()
-    local_candidate = (
+    candidate = (
         repo_root
         / ".dataset_working"
         / "annotations"
         / "annotation_template_100.jsonl"
     )
-    tracked_candidate = (
-        repo_root
-        / "mirai_dataset_preparation_pack"
-        / "data"
-        / "external"
-        / "mtsamples"
-        / "annotations"
-        / "annotation_template_100.jsonl"
-    )
-    candidate = local_candidate if local_candidate.is_file() else tracked_candidate
     try:
         candidate.relative_to(repo_root)
     except ValueError as exc:
@@ -94,13 +84,14 @@ def _annotation_template_path() -> Path:
 
 
 def _annotation_working_path() -> Path:
-    """Resolve the ignored working queue beside the selected source template."""
-    template_path = _annotation_template_path()
-    if template_path.parent.parent.name == ".dataset_working":
-        candidate = template_path.parent / ".annotation_working_queue.jsonl"
-    else:
-        candidate = Path(settings.BASE_DIR).resolve() / ANNOTATION_WORKING_QUEUE_FILENAME
+    """Return the ignored local draft file; note text never belongs in sessions."""
     repo_root = Path(settings.BASE_DIR).resolve()
+    candidate = (
+        repo_root
+        / ".dataset_working"
+        / "annotations"
+        / ".annotation_working_queue.jsonl"
+    )
     try:
         candidate.relative_to(repo_root)
     except ValueError as exc:
@@ -242,100 +233,122 @@ def _build_provisional_annotations(note_text: str) -> dict[str, list[dict]]:
 
 
 def _load_annotation_queue_from_jsonl(path: Path) -> list[dict]:
-    """Read the JSONL queue while preserving the original note text and provenance."""
+    """Read a local JSONL queue and fail closed on malformed or duplicate records."""
     queue: list[dict] = []
-    if not path.exists():
+    seen_ids: set[str] = set()
+    seen_source_rows: set[tuple[str, int]] = set()
+    if not path.is_file():
         return queue
     with path.open("r", encoding="utf-8") as handle:
-        for raw_line in handle:
+        for line_number, raw_line in enumerate(handle, start=1):
             if not raw_line.strip():
                 continue
-            record = json.loads(raw_line)
+            try:
+                record = json.loads(raw_line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"Annotation queue contains invalid JSON at line {line_number}."
+                ) from exc
             if not isinstance(record, dict):
-                continue
+                raise ValueError(
+                    f"Annotation queue record at line {line_number} is not an object."
+                )
+            record_id = record.get("record_id")
+            note_text = record.get("note_text")
+            source_dataset = record.get("source_dataset")
+            source_row = record.get("source_row_number")
+            specialty = record.get("specialty")
+            if not isinstance(record_id, str) or not record_id.strip():
+                raise ValueError(f"Annotation queue line {line_number} has an invalid record ID.")
+            if record_id in seen_ids:
+                raise ValueError(f"Annotation queue contains a duplicate record ID at line {line_number}.")
+            if not isinstance(note_text, str) or not note_text.strip():
+                raise ValueError(f"Annotation queue record {record_id} has no source note text.")
+            if not isinstance(source_dataset, str) or not source_dataset.strip():
+                raise ValueError(f"Annotation queue record {record_id} has no source dataset.")
+            if not isinstance(source_row, int) or isinstance(source_row, bool) or source_row < 1:
+                raise ValueError(f"Annotation queue record {record_id} has an invalid source row.")
+            if not isinstance(specialty, str) or not specialty.strip():
+                raise ValueError(f"Annotation queue record {record_id} has no specialty.")
+            source_key = (source_dataset, source_row)
+            if source_key in seen_source_rows:
+                raise ValueError(f"Annotation queue contains a duplicate source row at line {line_number}.")
+            if source_dataset == ANNOTATION_SOURCE_DATASET:
+                match = re.fullmatch(r"mtsamples-(\d{5})-[0-9a-f]{16}", record_id)
+                if not match or int(match.group(1)) != source_row:
+                    raise ValueError(
+                        f"Annotation queue record {record_id} does not match source row {source_row}."
+                    )
+            seen_ids.add(record_id)
+            seen_source_rows.add(source_key)
             queue.append(record)
     return queue
 
 
 def _persist_local_annotation_queue_file(queue: list[dict]) -> Path:
-    """Persist local drafts to a Git-ignored working queue without mutating the source template."""
+    """Persist note-bearing annotation drafts only under the ignored local data directory."""
     working_path = _annotation_working_path()
     working_path.parent.mkdir(parents=True, exist_ok=True)
-    with working_path.open("w", encoding="utf-8") as handle:
+    temporary_path = working_path.with_suffix(working_path.suffix + ".tmp")
+    with temporary_path.open("w", encoding="utf-8", newline="\n") as handle:
         for record in queue:
             handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True))
             handle.write("\n")
+    temporary_path.replace(working_path)
     return working_path
 
 
 def _build_annotation_queue() -> list[dict]:
-    """Load the canonical annotation template from the repository instead of synthesizing a queue."""
+    """Load only the local prepared template and initialize every record as unannotated."""
     template_path = _annotation_template_path()
-    if not template_path.exists():
-        raise FileNotFoundError(f"Annotation queue template not found: {template_path}")
+    if not template_path.is_file():
+        return []
 
+    source_records = _load_annotation_queue_from_jsonl(template_path)
     queue: list[dict] = []
-    with template_path.open("r", encoding="utf-8") as handle:
-        for raw_line in handle:
-            if not raw_line.strip():
-                continue
-            record = json.loads(raw_line)
-            if not isinstance(record, dict):
-                continue
-            normalized = {
-                "record_id": record.get("record_id"),
-                "specialty": record.get("specialty", ""),
-                "note_text": record.get("note_text", ""),
-                "source_dataset": record.get("source_dataset", ANNOTATION_SOURCE_DATASET),
-                "source_url": record.get("source_url", ANNOTATION_SOURCE_URL),
-                "source_row_number": record.get("source_row_number", 1),
-                "source_keywords": record.get("source_keywords", ""),
-                "annotator_id": "",
-                "annotation_complete": False,
-                "adjudication_status": record.get("adjudication_status", "not_required"),
-                "conflict_status": record.get("conflict_status", "not_reviewed"),
-                "conflict_notes": record.get("conflict_notes", ""),
-                "reviewer_decision": record.get("reviewer_decision", "pending"),
-                "reviewer_comment": record.get("reviewer_comment", ""),
-                "gold_annotations": record.get("gold_annotations") or _empty_gold_annotations(),
-                "provisional_annotations": _build_provisional_annotations(record.get("note_text", "")),
-            }
-            queue.append(normalized)
+    for record in source_records:
+        note_text = record["note_text"]
+        normalized = {
+            "record_id": record["record_id"],
+            "specialty": record["specialty"],
+            "note_text": note_text,
+            "source_dataset": record["source_dataset"],
+            "source_url": record.get("source_url", ""),
+            "source_row_number": record["source_row_number"],
+            "source_keywords": record.get("source_keywords", ""),
+            "annotator_id": "",
+            "annotation_complete": False,
+            "annotation_status": "not_annotated",
+            "label_source": "unannotated",
+            "clinical_performance_eligible": False,
+            "adjudication_status": "not_reviewed",
+            "conflict_status": "not_reviewed",
+            "conflict_notes": "",
+            "reviewer_decision": "pending",
+            "reviewer_comment": "",
+            "gold_annotations": None,
+            "provisional_annotations": _build_provisional_annotations(note_text),
+        }
+        queue.append(normalized)
     return queue
 
 
 def _get_local_annotation_queue(request: HttpRequest) -> list[dict]:
+    # Remove stale session data written by older versions. Never put note text
+    # or annotation payloads into the session again.
+    request.session.pop("local_annotation_queue", None)
     working_path = _annotation_working_path()
     if working_path.exists() and working_path.stat().st_size > 0:
-        queue = _load_annotation_queue_from_jsonl(working_path)
-        if queue:
-            # If any record was previously initialized with hardcoded empty/default values,
-            # backfill missing saved selections from the canonical template without overwriting manual drafts.
-            template_records = None
-            modified = False
-            for record in queue:
-                if not record.get("annotator_id") and record.get("adjudication_status") == "not_required":
-                    if template_records is None:
-                        template_records = {r["record_id"]: r for r in _build_annotation_queue()}
-                    tmpl = template_records.get(record.get("record_id"))
-                    if tmpl:
-                        record["adjudication_status"] = tmpl.get("adjudication_status", "not_required")
-                        record["conflict_status"] = tmpl.get("conflict_status", "not_reviewed")
-                        record["reviewer_decision"] = tmpl.get("reviewer_decision", "pending")
-                        modified = True
-            if modified:
-                _persist_local_annotation_queue_file(queue)
-            request.session["local_annotation_queue"] = queue
-            return queue
+        return _load_annotation_queue_from_jsonl(working_path)
 
     queue = _build_annotation_queue()
-    _persist_local_annotation_queue_file(queue)
-    request.session["local_annotation_queue"] = queue
+    if queue:
+        _persist_local_annotation_queue_file(queue)
     return queue
 
 
 def _save_local_annotation_queue(request: HttpRequest, queue: list[dict]) -> None:
-    request.session["local_annotation_queue"] = queue
+    request.session.pop("local_annotation_queue", None)
     _persist_local_annotation_queue_file(queue)
 
 
@@ -374,11 +387,16 @@ def _record_to_form_initial(record: dict) -> dict:
 
 
 def _validate_record_for_export(record: dict) -> list[str]:
+    """Allow clinical-gold export only after independent provenance qualification."""
     payload = dict(record)
-    payload["gold_annotations"] = payload.get("gold_annotations", _empty_gold_annotations())
     if not payload.get("annotation_complete"):
-        return ["This draft is not marked complete and cannot be exported as gold."]
-    return ANNOTATION_VALIDATOR.validate_record(payload, 0)
+        return ["This draft is not marked complete."]
+    errors = ANNOTATION_VALIDATOR.qualification_errors(payload, 0)
+    if payload.get("label_source") == "model_generated_gold":
+        errors.append("AI-generated labels cannot be exported as independent clinical gold.")
+    elif payload.get("label_source") not in {"human_annotated", "external_gold_standard"}:
+        errors.append("This annotation has no independently qualified gold-label source.")
+    return errors
 
 
 @role_required("Doctor", "Administrator")
@@ -681,15 +699,27 @@ def patient_detail(
 
 @role_required("Doctor")
 def annotation_queue(request: HttpRequest) -> HttpResponse:
-    """Render the local annotation queue and progress summary."""
-    queue = _get_local_annotation_queue(request)
+    """Render the local-only annotation queue without session-backed note storage."""
+    queue_error = ""
+    try:
+        queue = _get_local_annotation_queue(request)
+    except (OSError, ValueError) as exc:
+        queue = []
+        queue_error = str(exc)
     completed = sum(1 for record in queue if record.get("annotation_complete"))
-    adjudicated = sum(1 for record in queue if record.get("adjudication_status") == "adjudicated")
+    # Do not count a self-declared adjudication value as qualified gold.
+    adjudicated = sum(
+        1
+        for record in queue
+        if not _validate_record_for_export(record)
+        and record.get("label_source") in {"human_annotated", "external_gold_standard"}
+    )
     progress = {
         "prepared": len(queue),
         "annotated": completed,
         "adjudicated": adjudicated,
         "remaining": len(queue) - completed,
+        "specialties": len({record.get("specialty") for record in queue if record.get("specialty")}),
     }
     return render(
         request,
@@ -699,6 +729,7 @@ def annotation_queue(request: HttpRequest) -> HttpResponse:
             "active_nav": "annotation",
             "queue": queue,
             "progress": progress,
+            "queue_error": queue_error,
         },
     )
 
@@ -718,16 +749,18 @@ def annotation_detail(request: HttpRequest, record_id: str) -> HttpResponse:
             cleaned = form.cleaned_data
             record.update(
                 {
-                    "record_id": cleaned["record_id"],
-                    "specialty": cleaned["specialty"],
-                    "note_text": cleaned["note_text"],
-                    "source_dataset": cleaned.get("source_dataset") or ANNOTATION_SOURCE_DATASET,
-                    "source_url": cleaned.get("source_url") or ANNOTATION_SOURCE_URL,
-                    "source_row_number": cleaned.get("source_row_number") or record.get("source_row_number", 1),
-                    "source_keywords": cleaned.get("source_keywords", ""),
+                    # Source text and provenance are immutable. Never trust hidden
+                    # or read-only fields submitted by the browser.
                     "annotator_id": cleaned.get("annotator_id", ""),
                     "annotation_complete": bool(cleaned.get("annotation_complete")),
-                    "adjudication_status": cleaned.get("adjudication_status", "not_required"),
+                    "annotation_status": (
+                        "draft_complete"
+                        if cleaned.get("annotation_complete")
+                        else "draft"
+                    ),
+                    "label_source": "unqualified_manual_draft",
+                    "clinical_performance_eligible": False,
+                    "adjudication_status": cleaned.get("adjudication_status", "not_reviewed"),
                     "conflict_status": cleaned.get("conflict_status", "not_reviewed"),
                     "conflict_notes": cleaned.get("conflict_notes", ""),
                     "reviewer_decision": cleaned.get("reviewer_decision", "pending"),
@@ -740,7 +773,7 @@ def annotation_detail(request: HttpRequest, record_id: str) -> HttpResponse:
                         "vital_signs": cleaned.get("vital_signs", []),
                         "icd10_cm_codes": cleaned.get("icd10_cm_codes", []),
                     },
-                    "provisional_annotations": _build_provisional_annotations(cleaned.get("note_text", "")),
+                    "provisional_annotations": _build_provisional_annotations(record.get("note_text", "")),
                 }
             )
             _save_local_annotation_queue(request, queue)

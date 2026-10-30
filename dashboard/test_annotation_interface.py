@@ -150,7 +150,13 @@ class LocalAnnotationInterfaceTests(TestCase):
             follow=True,
         )
         self.assertEqual(response.status_code, 200)
-        queue = self.client.session["local_annotation_queue"]
+        self.assertNotIn("local_annotation_queue", self.client.session)
+        self.assertNotIn(note_text, json.dumps(dict(self.client.session.items())))
+        queue = [
+            json.loads(line)
+            for line in self.working_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
         stored = next(record for record in queue if record["record_id"] == note_id)
         self.assertEqual(stored["specialty"], note["specialty"])
         self.assertTrue(stored["annotation_complete"])
@@ -207,11 +213,54 @@ class LocalAnnotationInterfaceTests(TestCase):
                 lines = [json.loads(line) for line in working_path.read_text(encoding="utf-8").splitlines() if line.strip()]
                 saved = next(item for item in lines if item["record_id"] == note_id)
                 self.assertEqual(saved["annotator_id"], "annotator-durable")
-                self.client.session.pop("local_annotation_queue")
-                self.client.session.save()
+                self.assertNotIn("local_annotation_queue", self.client.session)
                 response = self.client.get(reverse("dashboard:annotation_queue"))
                 self.assertEqual(response.status_code, 200)
                 self.assertTrue(any(item["record_id"] == note_id for item in response.context["queue"]))
+
+    def test_post_cannot_change_source_note_or_provenance(self):
+        note = self.client.get(reverse("dashboard:annotation_queue")).context["queue"][0]
+        original_text = note["note_text"]
+        payload = {
+            "record_id": note["record_id"],
+            "specialty": "Tampered specialty",
+            "note_text": "Tampered source note",
+            "source_dataset": "tampered:source",
+            "source_url": "https://example.invalid/tampered",
+            "source_row_number": 999,
+            "source_keywords": "tampered",
+            "diagnoses": "[]",
+            "procedures": "[]",
+            "medications": "[]",
+            "allergies": "[]",
+            "vital_signs": "[]",
+            "icd10_cm_codes": "[]",
+            "annotator_id": "synthetic-reviewer",
+            "action": "save",
+        }
+        self.client.post(
+            reverse("dashboard:annotation_detail", kwargs={"record_id": note["record_id"]}),
+            payload,
+        )
+
+        saved = [
+            json.loads(line)
+            for line in self.working_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ][0]
+        self.assertEqual(saved["note_text"], original_text)
+        self.assertEqual(saved["specialty"], note["specialty"])
+        self.assertEqual(saved["source_dataset"], note["source_dataset"])
+        self.assertEqual(saved["source_row_number"], note["source_row_number"])
+        self.assertEqual(saved["source_keywords"], note["source_keywords"])
+
+
+    def test_missing_local_queue_shows_setup_message(self):
+        self.template_path.unlink()
+        response = self.client.get(reverse("dashboard:annotation_queue"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "No local annotation queue is prepared")
+        self.assertNotContains(response, "mtsamples-")
 
     def test_export_is_blocked_until_valid_gold_record_is_complete(self):
         response = self.client.get(reverse("dashboard:annotation_export"))
