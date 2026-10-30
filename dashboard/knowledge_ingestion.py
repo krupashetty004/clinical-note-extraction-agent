@@ -25,6 +25,7 @@ def _extract_image_via_vision_llm(uploaded, suffix: str) -> str | None:
 
     from django.conf import settings
     from dashboard.models import AIConfiguration
+    from dashboard.provider_config import ai_configuration_fingerprint
     from dashboard.utils import increment_credit
 
     logger = logging.getLogger(__name__)
@@ -84,6 +85,15 @@ def _extract_image_via_vision_llm(uploaded, suffix: str) -> str | None:
 
     if not api_key:
         logger.info("Active Groq configuration has no usable credential")
+        return None
+
+    if (
+        config.last_test_status != "passed"
+        or not config.tested_fingerprint
+        or config.tested_fingerprint
+        != ai_configuration_fingerprint(config, api_key=api_key)
+    ):
+        logger.info("Active Groq vision configuration has not passed a matching synthetic test")
         return None
 
     try:
