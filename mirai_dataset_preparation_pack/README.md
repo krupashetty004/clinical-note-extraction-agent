@@ -58,6 +58,39 @@ Generated note-level files are written under the Git-ignored repository-root `.d
 
 The full note text exists only in local working files. The reports do not include note text. Review local data handling before any external processing. MTSamples specialty and keyword fields are not gold entity labels.
 
+### Use the prepared queue in the clinical extraction workflow
+
+The Doctor annotation page uses the generated local queue automatically. The saved draft is kept in `.dataset_working\\annotations\\.annotation_working_queue.jsonl`; the tracked template is not overwritten.
+
+For ICD-10 coding, import the supplied reference into your local Django database once if the table is empty:
+
+```powershell
+python manage.py import_icd10 --source data\\reference\\icd10cm-codes-2027.txt --apply
+```
+
+Check that prepared records and the annotation queue are discoverable:
+
+```powershell
+python manage.py dataset_status
+```
+
+Run the 100-note queue through the application's **local** extraction, ICD-10 retrieval, independent verification and reconciliation workflow:
+
+```powershell
+python manage.py process_mtsamples_dataset --limit 100
+```
+
+This command never selects Groq, Gemini, or another external provider. It does not create Patient, Encounter, ClinicalNote, or ClinicalProcessingRun records. It stores note-level results only under the ignored `.dataset_working\\runs\\mtsamples\\` directory:
+
+- `predictions.jsonl` — extracted entities, original-note evidence/offsets, candidate codes and source identifiers.
+- `operations.jsonl` — per-note status, latency, attempts, provider identity and safe failure codes.
+- `results.jsonl` — atomic checkpoint for resumable execution.
+- `report.json` — aggregate counts and explicit evaluation status.
+
+Use `--resume` to continue from the checkpoint after interruption, or `--overwrite` to start the batch outputs again. Do not commit these files because they contain note-linked extraction content.
+
+The queue contains no trusted clinical gold labels by default. The batch report therefore marks clinical accuracy as **NOT EVALUATED** unless all selected records have qualified, independently sourced labels and the evaluation checks pass.
+
 Validate the generated queue after trusted annotations have actually been supplied:
 
 ```powershell
