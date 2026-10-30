@@ -411,8 +411,8 @@ class AIConfigurationForm(forms.ModelForm):
             ("", "Select an approved model"),
             ("local-synthetic-v1", "Local synthetic v1"),
             ("openai/gpt-oss-20b", "Groq: openai/gpt-oss-20b"),
-            ("llama-3.3-70b-versatile", "Groq: Llama 3.3 70B Versatile"),
-            ("llama-3.2-11b-vision-preview", "Groq Vision: Llama 3.2 11B Vision"),
+            ("openai/gpt-oss-120b", "Groq: OpenAI GPT-OSS 120B"),
+            ("qwen/qwen3.8-27b", "Groq: Qwen 3.8 27B"),
             ("gemini-1.5-flash", "Google Gemini: Gemini 1.5 Flash"),
             ("gemini-2.0-flash", "Google Gemini: Gemini 2.0 Flash"),
         ),
@@ -489,8 +489,8 @@ class AIConfigurationForm(forms.ModelForm):
             "synthetic": {"local-synthetic-v1"},
             "groq": {
                 "openai/gpt-oss-20b",
-                "llama-3.3-70b-versatile",
-                "llama-3.2-11b-vision-preview",
+                "openai/gpt-oss-120b",
+                "qwen/qwen3.8-27b",
             },
             "gemini": {
                 "gemini-1.5-flash",
