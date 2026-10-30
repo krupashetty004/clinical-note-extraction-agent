@@ -839,6 +839,10 @@ def _processing_run_context(
         "extraction_json": format_result(run.extraction_result),
         "coding_json": format_result(run.coding_result),
         "verification_json": format_result(run.verification_result),
+        "knowledge_retrieval_json": format_result({
+            "status": run.knowledge_retrieval_status,
+            "references": run.knowledge_references,
+        }),
         "dispositions_json": format_result(run.item_dispositions),
         "review_reasons_json": format_result(run.review_reasons),
         "review_form": form or ProcessingRunReviewForm(
@@ -1481,6 +1485,10 @@ def export_processing_run(
         "extraction_result": run.extraction_result,
         "coding_result": run.coding_result,
         "verification_result": run.verification_result,
+        "knowledge_retrieval": {
+            "status": run.knowledge_retrieval_status,
+            "references": run.knowledge_references,
+        },
         "item_dispositions": run.item_dispositions,
         "review": {
             "status": run.status,
