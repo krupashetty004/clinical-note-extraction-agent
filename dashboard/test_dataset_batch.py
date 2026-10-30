@@ -182,6 +182,68 @@ class DatasetBatchTests(SimpleTestCase):
         self.assertEqual(len(rows), 2)
         self.assertEqual(mock_run.call_count, 1)
 
+    @patch("dashboard.extraction.dataset_batch.run_agent_workflow")
+    def test_resume_rejects_modified_input_dataset(self, mock_run):
+        mock_run.return_value = fake_workflow_result("completed")
+        run_dataset_batch(
+            input_path=self.input_path,
+            output_dir=self.output_dir,
+            limit=1,
+        )
+        mock_run.reset_mock()
+
+        rows = [
+            json.loads(line)
+            for line in self.input_path.read_text(encoding="utf-8").splitlines()
+        ]
+        rows[0]["note_text"] = "Assessment: diabetes."
+        self.input_path.write_text(
+            "".join(json.dumps(row) + "\n" for row in rows),
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(DatasetBatchError, "dataset changed"):
+            run_dataset_batch(
+                input_path=self.input_path,
+                output_dir=self.output_dir,
+                limit=1,
+                resume=True,
+            )
+        mock_run.assert_not_called()
+
+    @patch("dashboard.extraction.dataset_batch.run_agent_workflow")
+    def test_overwrite_starts_a_new_batch_and_replaces_manifest(self, mock_run):
+        mock_run.return_value = fake_workflow_result("completed")
+        first = run_dataset_batch(
+            input_path=self.input_path,
+            output_dir=self.output_dir,
+            limit=1,
+        )
+        manifest_path = self.output_dir / "manifest.json"
+        first_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(first_manifest["selected_record_ids"], ["case-001"])
+
+        rows = [
+            json.loads(line)
+            for line in self.input_path.read_text(encoding="utf-8").splitlines()
+        ]
+        rows[0]["note_text"] = "Assessment: diabetes."
+        self.input_path.write_text(
+            "".join(json.dumps(row) + "\n" for row in rows),
+            encoding="utf-8",
+        )
+
+        second = run_dataset_batch(
+            input_path=self.input_path,
+            output_dir=self.output_dir,
+            limit=1,
+            overwrite=True,
+        )
+        second_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertNotEqual(first_manifest["source_sha256"], second_manifest["source_sha256"])
+        self.assertEqual(second["new_records_processed"], 1)
+        self.assertEqual(mock_run.call_count, 2)
+
     def test_refuses_existing_outputs_without_resume_or_overwrite(self):
         self.output_dir.mkdir(parents=True)
         (self.output_dir / "predictions.jsonl").write_text("", encoding="utf-8")
