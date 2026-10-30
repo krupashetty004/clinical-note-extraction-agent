@@ -40,7 +40,7 @@ pip install -r requirements.txt
 python manage.py migrate
 ```
 
-This creates an SQLite database at `db.sqlite3` and seeds the `Doctor` and `Admin` workspace roles.
+This creates an SQLite database at `db.sqlite3` and seeds the `Doctor` and `Administrator` workspace roles. No default user accounts or passwords are created.
 
 ### 5. Create a superuser (admin account)
 
@@ -50,19 +50,14 @@ python manage.py createsuperuser
 
 Follow the prompts to set a username and password.
 
-### 6. Add the superuser to the Doctor group
+### 6. Create least-privilege workspace users
 
-```bash
-python manage.py shell -c "
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
-u = get_user_model().objects.get(username='<your-username>')
-u.groups.add(Group.objects.get(name='Doctor'))
-print('Done')
-"
-```
+The superuser created above can access all application views. For day-to-day use, sign in to `/admin/`, create a separate non-superuser account, set its password, and assign exactly one workspace group:
 
-Replace `<your-username>` with the username you created above.
+- `Doctor` for patient, encounter, note processing, knowledge review and annotation tasks.
+- `Administrator` for AI settings and administrator-only functions.
+
+Do not share the superuser account for routine work. The login page does not publish demo usernames or passwords, and the application does not create default accounts automatically.
 
 ### 7. Start the development server
 
@@ -104,7 +99,7 @@ The run is saved and you are redirected to the processing run detail page.
 
 ### Optional: Run the synthetic demo
 
-To use the built-in synthetic data demo (no real notes needed), set `SYNTHETIC_DEMO_ENABLED=True` in your environment or `config/settings.py`, then click **"Run synthetic demo"** on any patient detail page.
+To use the built-in synthetic data demo (no real notes needed), set `MIRAI_ENABLE_SYNTHETIC_DEMO=1` in the local environment, then click **"Run synthetic demo"** on any patient detail page. The demo remains disabled by default.
 
 ---
 
@@ -237,13 +232,16 @@ clinical-note-extraction-agent/
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SECRET_KEY` | dev key | Django secret key (set in production) |
-| `DEBUG` | `True` | Set to `False` in production |
-| `DATABASE_URL` | SQLite | PostgreSQL connection string for production |
-| `GROQ_API_KEY` | — | Groq API key for LLM extraction (optional) |
-| `GROQ_PROVIDER_ENABLED` | `False` | Enable Groq extraction provider |
-| `SYNTHETIC_DEMO_ENABLED` | `False` | Enable the synthetic demo button |
-| `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated allowed hosts |
+| `DJANGO_SECRET_KEY` | local-only development key | Required secure Django signing key in production |
+| `DJANGO_ENV` | `development` | Set to `production` for hosted environments |
+| `DJANGO_DEBUG` | environment-dependent | Must be `0` in production |
+| `DATABASE_URL` | local SQLite | Persistent PostgreSQL connection string in production |
+| `DJANGO_ALLOWED_HOSTS` | `127.0.0.1,localhost` | Comma-separated allowed hosts when DEBUG is off |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | empty | Comma-separated HTTPS origins when required |
+| `GROQ_API_KEY` | — | Optional Groq credential; settings-page credentials are encrypted at rest |
+| `MIRAI_ENABLE_GROQ_PROVIDER` | `0` | Local Groq adapter opt-in; DEBUG-only |
+| `MIRAI_EXTERNAL_CLINICAL_DATA_APPROVED` | `0` | Separate approval gate for external Doctor-note processing; do not enable before formal privacy/security approval |
+| `MIRAI_ENABLE_SYNTHETIC_DEMO` | `0` | Enable the local synthetic demo in DEBUG mode |
 
 Set these in a `.env` file at the project root (never commit it).
 
@@ -255,6 +253,8 @@ Set these in a `.env` file at the project root (never commit it).
 - Never commit the raw MTSamples CSV, normalized note-level records, annotation queues containing note text, the SOW, patient data, API keys, or uploaded files.
 - Keep raw and generated dataset files in the Git-ignored local `.dataset_working/` directory.
 - The public demo must use synthetic patient data only.
+- No default demo usernames/passwords are stored in source code or exposed on the login page. Provision accounts explicitly; use a separate least-privilege Doctor account for routine work.
+- Never bootstrap users with known passwords or grant administrator roles automatically.
 - All clinical processing runs require doctor authentication and explicit patient access grants.
 
 ---
