@@ -99,15 +99,27 @@ def retrieve_knowledge_passages(
     min_score: float = 0.15,
 ) -> list[dict[str, Any]]:
     """Retrieve scored, filtered reference passages from published documents."""
+    if not isinstance(query, str):
+        raise TypeError("query must be a string.")
+    if isinstance(top_k, bool) or not isinstance(top_k, int) or not 1 <= top_k <= 20:
+        raise ValueError("top_k must be an integer between 1 and 20.")
+    if (
+        isinstance(min_score, bool)
+        or not isinstance(min_score, (int, float))
+        or not 0.0 <= min_score <= 1.0
+    ):
+        raise ValueError("min_score must be between 0 and 1.")
+
     query_tokens = _tokenize(query)
     if not query_tokens:
         return []
 
-    # Mandatory scope: only active, published documents
+    # Retrieval is restricted to explicitly approved active documents.
+    # Uploads start as needs_review/inactive and never enter RAG until a
+    # doctor or administrator publishes them through the knowledge UI.
     documents = KnowledgeDocument.objects.filter(
         is_active=True,
-    ).exclude(
-        ingestion_status="failed",
+        ingestion_status__in={"manual", "published"},
     )
 
     scored_candidates: list[dict[str, Any]] = []
