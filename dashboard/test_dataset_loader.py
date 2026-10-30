@@ -149,6 +149,62 @@ class DatasetLoaderTests(SimpleTestCase):
         self.assertEqual(report["metric_status"], "blocked")
         self.assertEqual(report["eligible_case_count"], 0)
 
+    def test_human_labels_need_distinct_qualified_adjudicator_and_review_notes(self):
+        metadata = {
+            "label_source": "human_annotated",
+            "label_provenance": {
+                "dataset_version": "synthetic-v1",
+                "annotation_guidelines": "synthetic-guidelines-v1",
+                "license_or_dua": "synthetic-test-only",
+            },
+            "annotation_complete": True,
+            "annotation_status": "adjudicated",
+            "adjudication_status": "adjudicated",
+            "annotator_id": "annotator-1",
+            "adjudicator_id": "annotator-1",
+            "annotator_qualification": {"qualified": True},
+            "adjudication_notes": "Synthetic adjudication record.",
+            "conflict_status": "not_applicable",
+            "conflict_notes": "Synthetic conflict check.",
+        }
+        path = self._write(
+            [
+                {
+                    "record_id": "synthetic-gold-1",
+                    "source_dataset": "synthetic:mirai-test",
+                    "source_url": "https://example.invalid/synthetic",
+                    "source_row_number": 1,
+                    "specialty": "Synthetic Specialty",
+                    "note_text": "Synthetic assessment note.",
+                    "annotation_complete": True,
+                    "annotation_status": "adjudicated",
+                    "adjudication_status": "adjudicated",
+                    "clinical_performance_eligible": True,
+                    "gold_annotations": {
+                        "diagnoses": [],
+                        "procedures": [],
+                        "medications": [],
+                        "allergies": [],
+                        "vital_signs": [],
+                        "icd10_cm_codes": [],
+                    },
+                    **metadata,
+                }
+            ]
+        )
+        result = load_jsonl(
+            path,
+            required_fields=REQUIRED_RECORD_FIELDS | {
+                "annotation_complete",
+                "annotation_status",
+                "gold_annotations",
+                "adjudication_status",
+            },
+        )
+        readiness = annotation_readiness(result)
+        self.assertEqual(readiness["clinical_performance_eligible"], 0)
+        self.assertFalse(readiness["gold_evaluation_ready"])
+
     def test_ai_benchmark_status_is_separate_from_gold_readiness(self):
         path = self._write(
             [

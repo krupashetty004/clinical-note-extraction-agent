@@ -220,15 +220,36 @@ GOLD_LABEL_SOURCES = {"human_annotated", "external_gold_standard"}
 
 
 def _has_gold_label_provenance(metadata: dict[str, Any]) -> bool:
-    """Require non-AI labels and auditable source provenance for gold metrics."""
+    """Require non-AI source, complete provenance, and independent qualification."""
     provenance = metadata.get("label_provenance")
+    if metadata.get("label_source") not in GOLD_LABEL_SOURCES:
+        return False
+    if not isinstance(provenance, dict) or not all(
+        isinstance(provenance.get(field), str) and provenance[field].strip()
+        for field in ("dataset_version", "annotation_guidelines", "license_or_dua")
+    ):
+        return False
+    if metadata.get("label_source") == "external_gold_standard":
+        return metadata.get("annotation_complete") is True
+    annotator = metadata.get("annotator_id")
+    adjudicator = metadata.get("adjudicator_id")
+    qualification = metadata.get("annotator_qualification")
     return (
-        metadata.get("label_source") in GOLD_LABEL_SOURCES
-        and isinstance(provenance, dict)
-        and all(
-            isinstance(provenance.get(field), str) and provenance[field].strip()
-            for field in ("dataset_version", "annotation_guidelines", "license_or_dua")
-        )
+        metadata.get("annotation_complete") is True
+        and metadata.get("annotation_status") in {"complete", "adjudicated"}
+        and metadata.get("adjudication_status") == "adjudicated"
+        and isinstance(annotator, str)
+        and bool(annotator.strip())
+        and isinstance(adjudicator, str)
+        and bool(adjudicator.strip())
+        and annotator != adjudicator
+        and isinstance(qualification, dict)
+        and qualification.get("qualified") is True
+        and isinstance(metadata.get("adjudication_notes"), str)
+        and bool(metadata["adjudication_notes"].strip())
+        and metadata.get("conflict_status") in {"resolved", "not_applicable"}
+        and isinstance(metadata.get("conflict_notes"), str)
+        and bool(metadata["conflict_notes"].strip())
     )
 
 

@@ -378,10 +378,20 @@ def main(argv: list[str] | None = None) -> int:
         records,
         icd_reference=icd_reference,
     )
+    clinical_gold_records = [
+        record
+        for record in qualified
+        if record.get("label_source") in {"human_annotated", "external_gold_standard"}
+        and record.get("clinical_performance_eligible") is True
+    ]
+    ai_benchmark_records = [
+        record for record in qualified
+        if record.get("label_source") == "model_generated_gold"
+    ]
     if args.export_qualified:
         args.export_qualified.parent.mkdir(parents=True, exist_ok=True)
         with args.export_qualified.open("w", encoding="utf-8", newline="\n") as handle:
-            for record in qualified:
+            for record in clinical_gold_records:
                 handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
     if args.export_evaluation_cases:
         cases, case_errors = evaluation_cases_from_records(
@@ -394,24 +404,35 @@ def main(argv: list[str] | None = None) -> int:
             for case in cases:
                 handle.write(json.dumps(case, ensure_ascii=False, sort_keys=True) + "\n")
     errors.extend(qualification_errors_found if args.require_qualified else [])
-    complete_specialties = {r.get("specialty") for r in complete if r.get("specialty")}
+    if args.require_qualified:
+        for record in qualified:
+            if record.get("label_source") not in {"human_annotated", "external_gold_standard"}:
+                errors.append(
+                    f"{record.get('record_id', 'unknown-id')}: AI-generated annotations are not clinical gold"
+                )
+    complete_specialties = {
+        r.get("specialty")
+        for r in clinical_gold_records
+        if r.get("specialty")
+    }
     print(json.dumps({
         "records_loaded": len(records),
         "completed_annotations": len(complete),
         "unreviewed_or_incomplete": len(records) - len(complete),
         "specialties_among_completed": len(complete_specialties),
         "duplicate_record_ids": len(duplicate_ids),
-        "qualified_gold_records": len(qualified),
+        "qualified_gold_records": len(clinical_gold_records),
+        "ai_generated_benchmark_records": len(ai_benchmark_records),
         "qualification_errors": len(qualification_errors_found),
         "validation_errors": len(errors),
         "minimum_specialties_required": 10,
         "specialty_coverage_met": len(complete_specialties) >= 10,
         "gold_evaluation_ready": (
             not errors
-            and len(qualified) > 0
+            and len(clinical_gold_records) == len(records)
             and len(complete_specialties) >= 10
             and (not args.require_complete or len(complete) == len(records))
-            and (not args.require_qualified or len(qualified) == len(records))
+            and (not args.require_qualified or len(clinical_gold_records) == len(records))
         ),
     }, indent=2))
     for error in errors[:50]:

@@ -162,7 +162,10 @@ def qualified_gold_from_queue(queue_path: Path) -> tuple[list[dict[str, Any]], d
     """Return qualified evaluation cases and explicit queue blockers."""
     validator = _load_validator()
     records = _load_jsonl(queue_path)
-    qualified, errors = validator.evaluation_cases_from_records(records)
+    evaluation_cases, errors = validator.evaluation_cases_from_records(records)
+    qualified = [case for case in evaluation_cases if case.get("gold_qualified") is True]
+    ai_generated = [case for case in evaluation_cases if case.get("gold_qualified") is False]
+    specialties = {case.get("specialty") for case in qualified if case.get("specialty")}
     progress = {
         "prepared_notes": len(records),
         "annotated_notes": sum(
@@ -173,8 +176,17 @@ def qualified_gold_from_queue(queue_path: Path) -> tuple[list[dict[str, Any]], d
             for record in records
         ),
         "qualified_notes": len(qualified),
+        "ai_generated_benchmark_notes": len(ai_generated),
+        "specialties_in_qualified_gold": len(specialties),
+        "minimum_specialties_required": 10,
+        "specialty_coverage_met": len(specialties) >= 10,
         "qualification_errors": len(errors),
-        "gold_evaluation_ready": bool(records) and len(qualified) == len(records),
+        "gold_evaluation_ready": (
+            bool(records)
+            and not errors
+            and len(qualified) == len(records)
+            and len(specialties) >= 10
+        ),
     }
     return qualified, progress
 
