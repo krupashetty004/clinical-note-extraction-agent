@@ -1057,6 +1057,13 @@ def knowledge_document_edit(request: HttpRequest, doc_id: int) -> HttpResponse:
                         "document": document,
                     },
                 )
+            # Publishing an uploaded draft is an explicit reviewer action.
+            # Active documents still in needs_review are never retrieved by RAG.
+            if updated.is_active and updated.ingestion_status == "needs_review":
+                updated.ingestion_status = "published"
+            elif not updated.is_active and updated.ingestion_status == "published":
+                updated.ingestion_status = "draft"
+
             updated.version_number = document.version_number + 1
             updated.created_by = document.created_by or request.user
             if not updated.is_active and prior_active:
