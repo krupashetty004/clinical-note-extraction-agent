@@ -115,6 +115,21 @@ class AnalyzerTests(unittest.TestCase):
                         )
 
 
+    def test_default_outputs_stay_in_ignored_local_workspace(self):
+        self.assertEqual(
+            ANALYZER.DEFAULT_PREPARED,
+            ANALYZER.PACKAGE_ROOT.parent / ".dataset_working" / "prepared",
+        )
+        self.assertEqual(
+            ANALYZER.DEFAULT_ANNOTATIONS,
+            ANALYZER.PACKAGE_ROOT.parent / ".dataset_working" / "annotations",
+        )
+        self.assertEqual(
+            ANALYZER.DEFAULT_REPORTS,
+            ANALYZER.PACKAGE_ROOT.parent / ".dataset_working" / "reports",
+        )
+
+
 class AnnotationValidatorTests(unittest.TestCase):
     def base_record(self):
         note = "Assessment: hypertension."
