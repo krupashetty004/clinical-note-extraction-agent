@@ -33,6 +33,7 @@ PREDICTIONS_FILENAME = "predictions.jsonl"
 OPERATIONS_FILENAME = "operations.jsonl"
 REPORT_FILENAME = "report.json"
 CHECKPOINT_FILENAME = "results.jsonl"
+MANIFEST_FILENAME = "manifest.json"
 LOCAL_PROVIDER_ID = "local-clinical-rules-v1"
 
 
@@ -272,11 +273,17 @@ def run_dataset_batch(
     operations_path = output_root / OPERATIONS_FILENAME
     report_path = output_root / REPORT_FILENAME
     checkpoint_path = output_root / CHECKPOINT_FILENAME
+    manifest_path = output_root / MANIFEST_FILENAME
     output_root.mkdir(parents=True, exist_ok=True)
 
     outputs_exist = any(
         path.exists()
-        for path in (predictions_path, operations_path, checkpoint_path)
+        for path in (
+            predictions_path,
+            operations_path,
+            checkpoint_path,
+            manifest_path,
+        )
     )
     if resume and overwrite:
         raise DatasetBatchError("--resume and --overwrite cannot be used together.")
@@ -286,14 +293,38 @@ def run_dataset_batch(
             "--overwrite to replace them."
         )
 
+    source_sha256 = hashlib.sha256(source_path.read_bytes()).hexdigest()
+    selected_record_ids = [record.record_id for record in selected_records]
     predictions: list[dict[str, Any]] = []
     operations: list[dict[str, Any]] = []
     checkpoints: list[dict[str, Any]] = []
     completed_ids: set[str] = set()
     if resume:
-        if not checkpoint_path.is_file():
+        if not manifest_path.is_file() or not checkpoint_path.is_file():
             raise DatasetBatchError(
-                "Resume requires the atomic results.jsonl checkpoint file."
+                "Resume requires both manifest.json and the atomic results.jsonl checkpoint."
+            )
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            raise DatasetBatchError("The batch manifest is missing or invalid.") from None
+        if not isinstance(manifest, dict):
+            raise DatasetBatchError("The batch manifest must be a JSON object.")
+        if manifest.get("source_sha256") != source_sha256:
+            raise DatasetBatchError(
+                "The input dataset changed since this batch started. Use --overwrite "
+                "to process the new dataset from the beginning."
+            )
+        prior_ids = manifest.get("selected_record_ids")
+        if (
+            not isinstance(prior_ids, list)
+            or any(not isinstance(value, str) for value in prior_ids)
+            or len(prior_ids) != len(set(prior_ids))
+            or not set(prior_ids).issubset(selected_ids)
+        ):
+            raise DatasetBatchError(
+                "The selected record set differs from the saved batch. "
+                "Use --overwrite to start a new batch."
             )
         checkpoints = _read_jsonl(checkpoint_path)
         for row in checkpoints:
@@ -311,10 +342,28 @@ def run_dataset_batch(
             predictions.append(prediction)
             operations.append(operation)
         completed_ids = {row["case_id"] for row in checkpoints}
-        if not completed_ids.issubset(selected_ids):
+        if completed_ids != {
+            row["case_id"] for row in checkpoints
+        } or not completed_ids.issubset(set(prior_ids)):
             raise DatasetBatchError(
-                "Existing batch outputs contain IDs outside the selected input records."
+                "The checkpoint does not match the batch manifest."
             )
+        manifest["selected_record_ids"] = selected_record_ids
+        _write_json_atomic(manifest_path, manifest)
+    else:
+        # Starting a new or explicitly overwritten batch resets its checkpoint.
+        _write_jsonl_atomic(checkpoint_path, [])
+        _write_json_atomic(
+            manifest_path,
+            {
+                "manifest_version": 1,
+                "source_file": source_path.name,
+                "source_sha256": source_sha256,
+                "selected_record_ids": selected_record_ids,
+                "provider": "local",
+                "provider_id": LOCAL_PROVIDER_ID,
+            },
+        )
 
     previously_processed_count = len(predictions)
     extraction_provider = LocalClinicalExtractionProvider()
