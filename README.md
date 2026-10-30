@@ -86,8 +86,8 @@ Open **http://127.0.0.1:8000/** in your browser and sign in.
 
 On the patient detail page, click **"Process with AI Agent"** (POST to `/notes/<id>/process/`).
 
-- If a Groq API key is configured in Settings and `GROQ_PROVIDER_ENABLED=True`, the Groq extraction provider is used.
-- Otherwise the **local offline extraction engine** (`LocalClinicalExtractionProvider`) runs — no network call required.
+- The **local offline extraction engine** (`LocalClinicalExtractionProvider`) is the default and makes no network call.
+- Enabling Groq for synthetic adapter tests with `MIRAI_ENABLE_GROQ_PROVIDER=1` does not permit Doctor notes to be sent externally. The Doctor workflow also requires `MIRAI_EXTERNAL_CLINICAL_DATA_APPROVED=1`, which must only be set after the required Mirai Labs privacy/security approval, and a configured Groq key. Without that approval, it continues to use the local provider.
 
 The run is saved and you are redirected to the processing run detail page.
 
@@ -155,6 +155,7 @@ Outputs are written only under `.dataset_working\\runs\\mtsamples\\`:
 - `predictions.jsonl` — structured entity results, evidence offsets, ICD-10 candidates, and source IDs.
 - `operations.jsonl` — status, duration, bounded attempt counts, provider identity and safe failure codes.
 - `results.jsonl` — atomic per-note checkpoint used by the resume option.
+- `manifest.json` — source-file SHA-256, provider identity, and selected record IDs used to prevent stale results from being resumed against a changed dataset.
 - `report.json` — aggregate processing totals and an evaluation status.
 
 Resume an interrupted batch with `--resume`; deliberately replace outputs with `--overwrite`. The batch does not call external AI providers. It does not claim clinical accuracy when qualified gold labels are unavailable.
