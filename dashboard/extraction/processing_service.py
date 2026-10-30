@@ -42,7 +42,7 @@ def _build_knowledge_query(original_note: str, *, max_terms: int = 16) -> str:
     """Build a bounded lexical query without storing or logging note content."""
     tokens = [
         token.casefold()
-        for token in re.findall(r"[^\\W_]+", original_note, flags=re.UNICODE)
+        for token in re.findall(r"[^\W_]+", original_note, flags=re.UNICODE)
         if len(token) > 2 and token.casefold() not in _RAG_STOPWORDS
     ]
     if not tokens:
