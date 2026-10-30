@@ -253,6 +253,15 @@ The current feature-branch implementation has connected a first lexical RAG path
 - The offline MTSamples batch command remains a separate local benchmark path. It uses deterministic local extraction/verification and does not currently include RAG.
 - The deterministic local extraction provider accepts the context contract but does not use references to generate additional findings. The Groq adapter accepts references as separate context, but Doctor-note external use remains disabled unless `MIRAI_EXTERNAL_CLINICAL_DATA_APPROVED=1` is explicitly set after the required privacy/security approval, in addition to the existing provider opt-in and key.
 
+### AI provider configuration snapshot
+
+- The Administrator settings page stores the selected provider/model and generation parameters; a configured Groq key is encrypted at rest and rendered only as a masked placeholder.
+- Groq model choices are currently `openai/gpt-oss-20b`, `openai/gpt-oss-120b`, and `qwen/qwen3.8-27b`. Deprecated Llama model identifiers are not offered.
+- The connection test uses a fixed synthetic note, never a patient note. The current test verifies Groq extraction output against the application's schema and does not establish clinical quality.
+- A fingerprint binds a successful test to the exact provider, model, temperature, completion-token limit, and credential digest. Activation is blocked when those settings change after testing.
+- The active configuration's credential/model/temperature/token limit are used by both extraction and verification adapters. Unsupported Gemini activation is blocked; the workflow does not silently change providers.
+- Actual Doctor-note processing through Groq requires both the local provider opt-in and the separate `MIRAI_EXTERNAL_CLINICAL_DATA_APPROVED=1` deployment gate. Keep that approval gate disabled until Mirai Labs has completed the formal privacy/security review. With a selected Groq configuration and a missing gate/key, the request is blocked with a visible user message.
+
 These limitations must remain visible in project reporting. A passing CI suite validates automated code contracts; it does not establish retrieval quality, clinical accuracy, or deployment approval.
 
 **Status:** Proposed revised architecture. It is not evidence of implementation or formal scope/provider approval.
