@@ -299,6 +299,7 @@ class AIConfiguration(models.Model):
     last_test_status = models.CharField(max_length=24, default="not_tested")
     last_test_result = models.CharField(max_length=255, blank=True, default="")
     tested_at = models.DateTimeField(null=True, blank=True)
+    tested_fingerprint = models.CharField(max_length=64, blank=True, default="")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
