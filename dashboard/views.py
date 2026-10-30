@@ -64,9 +64,24 @@ ANNOTATION_WORKING_QUEUE_FILENAME = ".annotation_working_queue.jsonl"
 
 
 def _annotation_template_path() -> Path:
-    """Resolve the repository-backed queue template without allowing escapes."""
+    """Prefer the uploaded CSV's locally prepared queue; fall back to the tracked template."""
     repo_root = Path(settings.BASE_DIR).resolve()
-    candidate = repo_root / "mirai_dataset_preparation_pack" / "data" / "external" / "mtsamples" / "annotations" / "annotation_template_100.jsonl"
+    local_candidate = (
+        repo_root
+        / ".dataset_working"
+        / "annotations"
+        / "annotation_template_100.jsonl"
+    )
+    tracked_candidate = (
+        repo_root
+        / "mirai_dataset_preparation_pack"
+        / "data"
+        / "external"
+        / "mtsamples"
+        / "annotations"
+        / "annotation_template_100.jsonl"
+    )
+    candidate = local_candidate if local_candidate.is_file() else tracked_candidate
     try:
         candidate.relative_to(repo_root)
     except ValueError as exc:
@@ -75,9 +90,13 @@ def _annotation_template_path() -> Path:
 
 
 def _annotation_working_path() -> Path:
-    """Resolve the Git-ignored working queue used for local drafts."""
+    """Resolve the ignored working queue beside the selected source template."""
+    template_path = _annotation_template_path()
+    if template_path.parent.parent.name == ".dataset_working":
+        candidate = template_path.parent / ".annotation_working_queue.jsonl"
+    else:
+        candidate = Path(settings.BASE_DIR).resolve() / ANNOTATION_WORKING_QUEUE_FILENAME
     repo_root = Path(settings.BASE_DIR).resolve()
-    candidate = repo_root / ANNOTATION_WORKING_QUEUE_FILENAME
     try:
         candidate.relative_to(repo_root)
     except ValueError as exc:
