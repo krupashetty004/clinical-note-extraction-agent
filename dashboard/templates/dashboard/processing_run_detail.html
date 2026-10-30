@@ -104,6 +104,43 @@
     {% endif %}
 </section>
 
+<section class="panel">
+    <h2>Knowledge-base reference context</h2>
+    <p>
+        Retrieval status: <strong>{{ run.knowledge_retrieval_status }}</strong>
+    </p>
+    {% if run.knowledge_references %}
+        <ul>
+            {% for reference in run.knowledge_references %}
+                <li>
+                    <strong>{{ reference.title }}</strong>
+                    — version {{ reference.version }},
+                    chunk {{ reference.chunk_index }},
+                    score {{ reference.score }}
+                    {% if reference.source_citations %}
+                        <ul>
+                            {% for citation in reference.source_citations %}
+                                <li>
+                                    {{ citation.title }}
+                                    {% if citation.url %}
+                                        — <a href="{{ citation.url }}" target="_blank" rel="noopener noreferrer">Source</a>
+                                    {% endif %}
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>No approved matching reference passages were retrieved for this run.</p>
+    {% endif %}
+    <p class="text-muted">
+        Reference material provides context only. Extracted evidence and offsets
+        must match the original clinical note, not a knowledge-base document.
+    </p>
+</section>
+
 {% if run.status == "needs_review" and run.review_decision == "pending" %}
 <section class="panel">
     <h2>Human review</h2>
