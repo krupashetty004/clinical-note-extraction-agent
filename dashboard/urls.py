@@ -46,6 +46,11 @@ urlpatterns = [
         name="knowledge_document_edit",
     ),
     path(
+        "knowledge-base/<int:doc_id>/source/",
+        views.knowledge_document_source_download,
+        name="knowledge_document_source_download",
+    ),
+    path(
     "processing-runs/<int:run_id>/",
     views.processing_run_detail,
     name="processing_run_detail",

@@ -119,6 +119,35 @@ Go to **Knowledge Base → Upload Document** to add clinical guidelines, protoco
 - Original-note evidence spans remain mandatory. Reference passages are context only and must never be used as evidence for a diagnosis or other extracted claim.
 - The current RAG implementation is lexical; it does not yet use embeddings or pgvector. The deterministic local rules provider ignores the context, while the Groq adapter receives it separately.
 
+## Private persistent file storage
+
+Local development uses Django's local filesystem storage by default. For a hosted environment, configure a private Neon Object Storage bucket before enabling persistent source-file uploads. The application never makes source buckets public.
+
+1. In Neon, create an Object Storage bucket and set its access to **private**.
+2. Create a branch-scoped Neon credential with both `storage:read` and `storage:write` scopes. Keep the credentials in the deployment environment, not in Git.
+3. Configure these environment variables in the local environment or Render service:
+
+```text
+MIRAI_ENABLE_NEON_OBJECT_STORAGE=1
+NEON_STORAGE_BUCKET=<private bucket name>
+AWS_ENDPOINT_URL_S3=<branch S3 endpoint from Neon>
+AWS_REGION=<region from Neon>
+AWS_ACCESS_KEY_ID=<scoped Neon access key>
+AWS_SECRET_ACCESS_KEY=<scoped Neon secret>
+```
+
+4. Run the synthetic-only storage check:
+
+```powershell
+python manage.py check_neon_storage
+```
+
+The command writes, reads, and deletes a small synthetic test object. It does not use clinical content. The knowledge-base original-file download route checks Django authentication and role permissions and streams the file through the application; it does not display a public bucket URL.
+
+When object storage is enabled but the required settings are incomplete, Django startup fails with the missing variable names. When running in production without object storage enabled, knowledge-file uploads are rejected rather than saved to Render's ephemeral filesystem. Local development remains on filesystem storage unless explicitly opted in.
+
+The Neon Free plan currently lists 5 GB of Object Storage per project. Quotas and regional availability must be rechecked before a real deployment. Render Free uses an ephemeral filesystem and can restrict services that initiate unusually high outbound traffic; this integration is intended for a bounded synthetic demo, not production clinical data. Do not upload real patient information until Mirai Labs approves the hosting, storage, provider, and privacy/security design.
+
 ---
 
 ## Dataset preparation and annotation

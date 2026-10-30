@@ -77,7 +77,7 @@ flowchart TD
     REVIEW --> JSON
 ```
 
-**Storage note:** Neon is the proposed PostgreSQL provider and supports pgvector. Neon Object Storage is the preferred file-storage choice because the current official documentation marks it generally available, S3-compatible, and included at 5 GB per project on the Free plan. Private access controls and Python/S3 compatibility still require an implementation smoke test. If it fails the acceptance checklist, evaluate Supabase Storage Free as a fallback without changing the Neon database decision. Reconfirm allowances before deployment.
+**Storage note:** Neon is the proposed PostgreSQL provider and supports pgvector. Neon Object Storage is the preferred file-storage choice: it is generally available, S3-compatible, supports private buckets and branch-scoped credentials, and the Free plan currently lists 5 GB per project. The Django storage adapter is opt-in and uses private S3-compatible access. A live smoke test against the specific Neon project/branch and bucket is still required before hosted uploads are enabled. If that test fails, evaluate Supabase Storage Free as a fallback without changing the Neon database decision. Reconfirm allowances before deployment.
 
 ## 4. Data Sources Must Stay Distinct
 
@@ -181,15 +181,16 @@ Neon is a PostgreSQL hosting provider, not an alternative database engine. Both 
 ### Free-tier constraints
 - Current Neon Free limits checked on 16 October 2026 include 1 GB PostgreSQL storage/project, 100 CU-hours/project/month, 5 GB public network transfer/project/month, and 5 GB Object Storage/project. Recheck quotas before deployment.
 - Current Supabase Free documentation lists 500 MB database size, 1 GB storage, and 5 GB egress; projects can be paused under free-plan rules.
-- Render Free web services can sleep and use ephemeral local storage; do not treat the application filesystem as persistent.
+- Render Free web services can sleep and use ephemeral local storage; do not treat the application filesystem as persistent. Render also warns that unusually high service-initiated public traffic, including transfers to external object storage, can trigger suspension; keep the demo's uploads bounded and monitor usage.
 - AI APIs, OCR, and transcription must respect free quotas and input limits. The system must explain/defer on quota exhaustion and must not trigger paid fallback.
 - Keep synthetic demo data and monitor limits. Free tiers are suitable for a bounded evaluation demo, not a promise of unlimited or production-grade availability.
 
 References:
 - Neon plans: https://neon.com/docs/introduction/plans
-- Neon Object Storage (GA; 5 GB/project on Free): https://neon.com/blog/building-neon-object-storage and https://neon.com/blog/neon-backend-is-ga
+- Neon Object Storage (S3-compatible, private buckets, 5 GB/project on Free): https://neon.com/blog/building-neon-object-storage and https://neon.com/docs/introduction/plans
+- Neon object-storage credential scopes: https://neon.com/docs/storage/authentication
 - Neon pgvector: https://neon.com/blog/optimizing-vector-search-performance-with-pgvector
-- Render free services: https://render.com/docs/free
+- Render free services and ephemeral filesystem/outbound limits: https://render.com/docs/free
 - Supabase billing: https://supabase.com/docs/guides/platform/billing-on-supabase
 - Supabase storage access: https://supabase.com/docs/guides/storage/buckets/fundamentals
 

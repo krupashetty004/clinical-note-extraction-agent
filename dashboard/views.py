@@ -8,7 +8,7 @@ from pathlib import Path
 from django.contrib import messages
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Max, Prefetch, Q
-from django.http import Http404, HttpRequest, HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import (
     get_object_or_404,
     redirect,
@@ -1048,7 +1048,16 @@ def knowledge_document_new(request: HttpRequest) -> HttpResponse:
             document.created_by = request.user
             document.version_number = 1
             uploaded = form.cleaned_data.get("source_file")
-            if uploaded:
+            if (
+                uploaded
+                and not settings.DEBUG
+                and not settings.NEON_OBJECT_STORAGE_ENABLED
+            ):
+                form.add_error(
+                    "source_file",
+                    "File uploads are disabled in production until private persistent object storage is configured.",
+                )
+            elif uploaded:
                 try:
                     extracted, source_type, status = extract_uploaded_source(uploaded)
                 except KnowledgeIngestionError as exc:
@@ -1097,6 +1106,38 @@ def knowledge_document_detail(request: HttpRequest, doc_id: int) -> HttpResponse
 
 
 @role_required("Doctor", "Administrator")
+def knowledge_document_source_download(
+    request: HttpRequest,
+    doc_id: int,
+) -> FileResponse:
+    """Stream an original source only after Django has authorized the user.
+
+    Do not expose a public object URL. The storage bucket must remain private;
+    the server reads the object using its scoped storage credential.
+    """
+    document = get_object_or_404(KnowledgeDocument, pk=doc_id)
+    if not document.source_file:
+        raise Http404("No source file is attached to this document.")
+
+    try:
+        source = document.source_file.open("rb")
+    except Exception as exc:
+        # Provider exception text can contain request details. Log only the
+        # document identifier and exception type; return no storage internals.
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Knowledge source download failed (document_id=%s, error_type=%s)",
+            document.pk,
+            type(exc).__name__,
+        )
+        raise Http404("The source file is unavailable.") from None
+
+    filename = document.source_filename or Path(document.source_file.name).name
+    return FileResponse(source, as_attachment=True, filename=filename)
+
+
+@role_required("Doctor", "Administrator")
 def knowledge_document_edit(request: HttpRequest, doc_id: int) -> HttpResponse:
     document = get_object_or_404(KnowledgeDocument, pk=doc_id)
     citation = (document.source_citations or [{}])[0]
@@ -1110,7 +1151,16 @@ def knowledge_document_edit(request: HttpRequest, doc_id: int) -> HttpResponse:
         if form.is_valid():
             updated = form.save(commit=False)
             uploaded = form.cleaned_data.get("source_file")
-            if uploaded:
+            if (
+                uploaded
+                and not settings.DEBUG
+                and not settings.NEON_OBJECT_STORAGE_ENABLED
+            ):
+                form.add_error(
+                    "source_file",
+                    "File uploads are disabled in production until private persistent object storage is configured.",
+                )
+            elif uploaded:
                 try:
                     extracted, source_type, _status = extract_uploaded_source(uploaded)
                 except KnowledgeIngestionError as exc:

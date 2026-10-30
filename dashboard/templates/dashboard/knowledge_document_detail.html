@@ -24,17 +24,24 @@
             <h2 class="h6 text-uppercase text-muted">Summary</h2>
             <p class="mb-0">{{ document.summary|linebreaksbr }}</p>
         </div>
+    </div>
+    {% endif %}
 
-        {% if document.source_filename %}
-        <div class="card shadow-sm border-0 mb-4">
-            <div class="card-body">
-                <h2 class="h6 text-uppercase text-muted">Source and extraction</h2>
-                <p class="mb-1"><strong>{{ document.source_filename }}</strong> · {{ document.source_type|upper }}</p>
-                <p class="mb-0 text-muted">Status: {{ document.ingestion_status }}. Extracted content must be reviewed before activating this document.</p>
-                {% if document.ingestion_error %}<div class="alert alert-warning mt-3 mb-0">{{ document.ingestion_error }}</div>{% endif %}
+    {% if document.source_filename %}
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+                <div>
+                    <h2 class="h6 text-uppercase text-muted mb-1">Source and extraction</h2>
+                    <p class="mb-1"><strong>{{ document.source_filename }}</strong> · {{ document.source_type|upper }}</p>
+                    <p class="mb-0 text-muted">Status: {{ document.ingestion_status }}. Review extracted content before activating this document.</p>
+                </div>
+                {% if document.source_file %}
+                <a class="btn btn-outline-primary" href="{% url 'dashboard:knowledge_document_source_download' document.pk %}">Download original</a>
+                {% endif %}
             </div>
+            {% if document.ingestion_error %}<div class="alert alert-warning mt-3 mb-0">{{ document.ingestion_error }}</div>{% endif %}
         </div>
-        {% endif %}
     </div>
     {% endif %}
 

@@ -1,6 +1,11 @@
 import os
 from pathlib import Path
 
+from config.storage import (
+    build_default_storage_config,
+    neon_object_storage_enabled,
+)
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -8,6 +13,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Local development only. Production must provide DJANGO_SECRET_KEY.
 DJANGO_ENV = os.environ.get("DJANGO_ENV", "development").strip().lower()
 IS_RENDER = "RENDER" in os.environ
+NEON_OBJECT_STORAGE_ENABLED = neon_object_storage_enabled(os.environ)
 DEFAULT_DEBUG = "0" if DJANGO_ENV == "production" or IS_RENDER else "1"
 DEBUG = (
     os.environ.get("DJANGO_DEBUG", DEFAULT_DEBUG).strip().lower()
@@ -52,6 +58,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "storages",
     "dashboard.apps.DashboardConfig",
 ]
 
@@ -161,15 +168,16 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_ROOT = BASE_DIR / "media"
 MEDIA_URL = "/media/"
 
-if not DEBUG:
-    STORAGES = {
-        "default": {
-            "BACKEND": "django.core.files.storage.FileSystemStorage",
-        },
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-        },
-    }
+STORAGES = {
+    "default": build_default_storage_config(os.environ),
+    "staticfiles": {
+        "BACKEND": (
+            "whitenoise.storage.CompressedManifestStaticFilesStorage"
+            if not DEBUG
+            else "django.contrib.staticfiles.storage.StaticFilesStorage"
+        ),
+    },
+}
 
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
