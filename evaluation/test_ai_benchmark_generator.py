@@ -127,6 +127,8 @@ class AIBenchmarkGeneratorTests(unittest.TestCase):
         self.assertEqual(queue_record["annotation_status"], "complete")
         self.assertEqual(queue_record["label_source"], "ai_model")
         self.assertFalse(queue_record["clinical_performance_eligible"])
+        self.assertEqual(queue_record["label_provenance"]["model_or_provider"], "groq/synthetic-test-model")
+        self.assertEqual(queue_record["label_provenance"]["generation_timestamp"], queue_record["annotation_timestamp_utc"])
         self.assertEqual(len(queue_record["gold_annotations"]["diagnoses"]), 1)
         self.assertEqual(len(queue_record["gold_annotations"]["medications"]), 1)
         self.assertEqual(queue_record["gold_annotations"]["icd10_cm_codes"][0]["code"], "E11.9")

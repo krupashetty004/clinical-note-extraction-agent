@@ -311,6 +311,8 @@ def _build_annotation_queue() -> list[dict]:
     queue: list[dict] = []
     for record in source_records:
         note_text = record["note_text"]
+        source_gold = record.get("gold_annotations")
+        source_label = record.get("label_source")
         normalized = {
             "record_id": record["record_id"],
             "specialty": record["specialty"],
@@ -319,17 +321,42 @@ def _build_annotation_queue() -> list[dict]:
             "source_url": record.get("source_url", ""),
             "source_row_number": record["source_row_number"],
             "source_keywords": record.get("source_keywords", ""),
-            "annotator_id": "",
-            "annotation_complete": False,
-            "annotation_status": "not_annotated",
-            "label_source": "unannotated",
+            "annotator_id": record.get("annotator_id") or "",
+            "annotation_complete": record.get("annotation_complete") is True,
+            "annotation_status": record.get("annotation_status")
+            or ("draft_complete" if record.get("annotation_complete") is True else "not_annotated"),
+            # An annotation queue never self-qualifies as clinical gold.
+            # The separate validator must independently establish provenance.
+            "label_source": (
+                source_label
+                if source_label in {"ai_model", "model_generated_gold"}
+                else "unqualified_manual_draft"
+                if record.get("annotation_complete") is True
+                else "unannotated"
+            ),
             "clinical_performance_eligible": False,
-            "adjudication_status": "not_required",
-            "conflict_status": "not_reviewed",
-            "conflict_notes": "",
-            "reviewer_decision": "pending",
-            "reviewer_comment": "",
-            "gold_annotations": None,
+            "adjudication_status": (
+                record.get("adjudication_status")
+                if record.get("adjudication_status") in {"not_required", "adjudicated", "needs_rework"}
+                else "not_required"
+            ),
+            "conflict_status": (
+                record.get("conflict_status")
+                if record.get("conflict_status") in {"not_reviewed", "not_applicable", "resolved"}
+                else "not_reviewed"
+            ),
+            "conflict_notes": record.get("conflict_notes", ""),
+            "reviewer_decision": (
+                record.get("reviewer_decision")
+                if record.get("reviewer_decision") in {"pending", "accepted", "rejected"}
+                else "pending"
+            ),
+            "reviewer_comment": record.get("reviewer_comment", ""),
+            "gold_annotations": source_gold if isinstance(source_gold, dict) else None,
+            "expected_needs_review": record.get("expected_needs_review"),
+            "model_provider": record.get("model_provider", ""),
+            "model_id": record.get("model_id", ""),
+            "label_provenance": record.get("label_provenance"),
             "provisional_annotations": _build_provisional_annotations(note_text),
         }
         queue.append(normalized)

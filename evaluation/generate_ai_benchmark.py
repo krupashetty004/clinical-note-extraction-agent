@@ -142,6 +142,7 @@ def build_benchmark_case(
     items, needs_review, review_reasons = validate_annotation_payload(record.note_text, payload)
     if not model_provider.strip() or not model_id.strip():
         raise ValueError("model provider and model ID are required for provenance")
+    generated_at = annotated_at_utc or datetime.now(timezone.utc).isoformat()
     return {
         "case_id": record.record_id,
         "note": record.note_text,
@@ -153,7 +154,12 @@ def build_benchmark_case(
         "model_provider": model_provider,
         "model_id": model_id,
         "annotation_version": ANNOTATION_VERSION,
-        "annotation_timestamp_utc": annotated_at_utc or datetime.now(timezone.utc).isoformat(),
+        "annotation_timestamp_utc": generated_at,
+        "label_provenance": {
+            "model_or_provider": f"{model_provider}/{model_id}",
+            "generation_timestamp": generated_at,
+            "annotation_guidelines": ANNOTATION_VERSION,
+        },
         "source_dataset": record.source_dataset,
         "source_url": record.source_url,
         "source_row_number": record.source_row_number,
@@ -194,6 +200,7 @@ def benchmark_case_to_queue_record(record: DatasetRecord, case: Mapping[str, Any
         "model_id": case["model_id"],
         "annotation_version": case["annotation_version"],
         "annotation_timestamp_utc": case["annotation_timestamp_utc"],
+        "label_provenance": case["label_provenance"],
         "review_reasons": case.get("review_reasons", []),
     })
     return output
