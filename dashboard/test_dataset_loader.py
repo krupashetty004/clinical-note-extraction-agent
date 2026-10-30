@@ -219,7 +219,7 @@ class DatasetLoaderTests(SimpleTestCase):
                     "annotation_status": "not_annotated",
                     "gold_annotations": None,
                     "adjudication_status": "not_reviewed",
-                    "label_source": "ai_model",
+                    "label_source": "model_generated_gold",
                     "clinical_performance_eligible": False,
                 }
             ]
@@ -287,3 +287,6 @@ class DatasetLoaderTests(SimpleTestCase):
         self.assertTrue(readiness["ai_generated_benchmark_ready"])
         self.assertEqual(readiness["ai_generated_benchmark_records"], 1)
         self.assertFalse(readiness["gold_evaluation_ready"])
+        gold_cases, report = build_evaluation_gold_cases(result)
+        self.assertEqual(gold_cases, [])
+        self.assertEqual(report["metric_status"], "blocked")

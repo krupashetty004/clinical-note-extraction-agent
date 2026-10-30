@@ -177,7 +177,7 @@ def qualification_errors(
     *,
     icd_reference: dict[str, str] | None = None,
 ) -> list[str]:
-    """Return errors that prevent a completed record from gold evaluation."""
+    """Validate qualified human gold or explicitly separate model-generated silver labels."""
     errors = validate_record(
         record,
         line_number,
@@ -188,35 +188,29 @@ def qualification_errors(
         errors.append(prefix + "record is not annotation_complete")
     if record.get("annotation_status") not in {"complete", "adjudicated"}:
         errors.append(prefix + "annotation_status must be complete or adjudicated")
-    if record.get("adjudication_status") != "adjudicated":
-        errors.append(prefix + "record requires adjudication_status='adjudicated'")
-    if not isinstance(record.get("adjudicator_id"), str) or not record["adjudicator_id"].strip():
-        errors.append(prefix + "record requires a pseudonymous adjudicator_id")
-    if record.get("adjudicator_id") == record.get("annotator_id"):
-        errors.append(prefix + "adjudicator_id must differ from annotator_id")
-    if not isinstance(record.get("adjudication_notes"), str) or not record["adjudication_notes"].strip():
-        errors.append(prefix + "record requires adjudication_notes")
-    qualification = record.get("annotator_qualification")
-    if not isinstance(qualification, dict) or qualification.get("qualified") is not True:
-        errors.append(prefix + "record requires qualified annotator evidence")
-    if record.get("conflict_status") not in {"resolved", "not_applicable"}:
-        errors.append(prefix + "record requires reviewed conflict status")
-    if not isinstance(record.get("conflict_notes"), str) or not record["conflict_notes"].strip():
-        errors.append(prefix + "record requires conflict review notes")
+
     label_source = record.get("label_source")
+    provenance = record.get("label_provenance")
     if label_source in {"human_annotated", "external_gold_standard"}:
         if record.get("adjudication_status") != "adjudicated":
             errors.append(prefix + "record requires adjudication_status='adjudicated'")
-        if not isinstance(record.get("adjudicator_id"), str) or not record["adjudicator_id"].strip():
+        annotator = record.get("annotator_id")
+        adjudicator = record.get("adjudicator_id")
+        if not isinstance(annotator, str) or not annotator.strip():
+            errors.append(prefix + "record requires a pseudonymous annotator_id")
+        if not isinstance(adjudicator, str) or not adjudicator.strip():
             errors.append(prefix + "record requires a pseudonymous adjudicator_id")
-        if record.get("adjudicator_id") == record.get("annotator_id"):
+        if annotator == adjudicator:
             errors.append(prefix + "adjudicator_id must differ from annotator_id")
         if not isinstance(record.get("adjudication_notes"), str) or not record["adjudication_notes"].strip():
             errors.append(prefix + "record requires adjudication_notes")
         qualification = record.get("annotator_qualification")
         if not isinstance(qualification, dict) or qualification.get("qualified") is not True:
             errors.append(prefix + "record requires qualified annotator evidence")
-        provenance = record.get("label_provenance")
+        if record.get("conflict_status") not in {"resolved", "not_applicable"}:
+            errors.append(prefix + "record requires reviewed conflict status")
+        if not isinstance(record.get("conflict_notes"), str) or not record["conflict_notes"].strip():
+            errors.append(prefix + "record requires conflict review notes")
         if not isinstance(provenance, dict) or not all(
             isinstance(provenance.get(field), str) and provenance[field].strip()
             for field in ("dataset_version", "annotation_guidelines", "license_or_dua")
@@ -227,7 +221,6 @@ def qualification_errors(
                 "annotation_guidelines, and license_or_dua"
             )
     elif label_source == "model_generated_gold":
-        provenance = record.get("label_provenance")
         if not isinstance(provenance, dict) or not all(
             isinstance(provenance.get(field), str) and provenance[field].strip()
             for field in ("model_or_provider", "generation_timestamp", "annotation_guidelines")

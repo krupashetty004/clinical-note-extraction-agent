@@ -169,7 +169,7 @@ def load_jsonl(
                     )
                 continue
             if value["source_dataset"] == "kaggle:tboyle10/medicaltranscriptions":
-                match = re.fullmatch(r"mtsamples-(\\d{5})-[0-9a-f]{16}", record_id)
+                match = re.fullmatch(r"mtsamples-(\d{5})-[0-9a-f]{16}", record_id)
                 if not match or int(match.group(1)) != value["source_row_number"]:
                     if len(errors) < max_errors:
                         errors.append(
@@ -261,7 +261,7 @@ def _is_complete_ai_benchmark_record(metadata: dict[str, Any]) -> bool:
     """
     annotations = metadata.get("gold_annotations")
     return (
-        metadata.get("label_source") == "ai_model"
+        metadata.get("label_source") in {"ai_model", "model_generated_gold"}
         and metadata.get("clinical_performance_eligible") is False
         and metadata.get("annotation_complete") is True
         and metadata.get("annotation_status") in {"complete", "adjudicated"}

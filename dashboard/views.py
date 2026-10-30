@@ -65,7 +65,6 @@ ANNOTATION_SPECIALTIES = [
 
 ANNOTATION_SOURCE_DATASET = "kaggle:tboyle10/medicaltranscriptions"
 ANNOTATION_SOURCE_URL = "https://www.kaggle.com/datasets/tboyle10/medicaltranscriptions/data"
-ANNOTATION_WORKING_QUEUE_FILENAME = ".annotation_working_queue.jsonl"
 
 
 def _annotation_template_path() -> Path:
