@@ -278,7 +278,7 @@ class AIConfiguration(models.Model):
     PROVIDER_CHOICES = (
         ("synthetic", "Local synthetic test provider"),
         ("groq", "Groq"),
-        ("gemini", "Google Gemini"),
+        ("gemini", "Google Gemini (adapter not implemented)"),
     )
 
     provider = models.CharField(max_length=32, choices=PROVIDER_CHOICES)
@@ -325,8 +325,8 @@ class AIConfiguration(models.Model):
             "synthetic": {"local-synthetic-v1"},
             "groq": {
                 "openai/gpt-oss-20b",
-                "llama-3.3-70b-versatile",
-                "llama-3.2-11b-vision-preview",
+                "openai/gpt-oss-120b",
+                "qwen/qwen3.8-27b",
             },
             "gemini": {
                 "gemini-1.5-flash",
