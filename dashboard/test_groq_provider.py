@@ -54,6 +54,54 @@ class GroqProviderTests(SimpleTestCase):
         self.assertEqual(kwargs["response_format"], {"type": "json_object"})
         self.assertIn(note, kwargs["messages"][1]["content"])
 
+    def test_extraction_receives_reference_context_without_changing_note_evidence_source(self):
+        client = fake_client(json.dumps(EMPTY_EXTRACTION))
+        provider = GroqExtractionProvider(client=client, model="unit-test-model")
+        note = "Synthetic note: hypertension is documented."
+        reference = {
+            "document_id": 17,
+            "title": "Synthetic hypertension guideline",
+            "version": 2,
+            "chunk_index": 1,
+            "text": "Synthetic reference guidance about hypertension.",
+            "score": 0.81,
+        }
+
+        provider.extract(note, reference_context=[reference])
+
+        kwargs = client.chat.completions.create.call_args.kwargs
+        payload = json.loads(kwargs["messages"][1]["content"])
+        self.assertEqual(payload["original_note"], note)
+        self.assertEqual(payload["reference_context"], [reference])
+        system_prompt = kwargs["messages"][0]["content"]
+        self.assertIn("NOT evidence", system_prompt)
+        self.assertIn("never from a reference", system_prompt)
+
+    def test_verifier_receives_reference_context_as_context_only(self):
+        client = fake_client(json.dumps(EMPTY_VERIFICATION))
+        provider = GroqVerificationProvider(client=client, model="unit-test-model")
+        extraction = ExtractionResult.model_validate(EMPTY_EXTRACTION)
+        reference = {
+            "document_id": 21,
+            "title": "Synthetic reference",
+            "version": 1,
+            "chunk_index": 2,
+            "text": "Synthetic reference text.",
+            "score": 0.72,
+        }
+
+        provider.verify(
+            "Synthetic original note.",
+            extraction,
+            DiagnosisCodingBatch(diagnoses=()),
+            reference_context=[reference],
+        )
+
+        kwargs = client.chat.completions.create.call_args.kwargs
+        payload = json.loads(kwargs["messages"][1]["content"])
+        self.assertEqual(payload["reference_context"], [reference])
+        self.assertIn("original_note only", kwargs["messages"][0]["content"])
+
     def test_annotation_provider_returns_json_and_exposes_model_provenance(self):
         expected = {
             "items": [],
