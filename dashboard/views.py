@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import json
 import os
@@ -1101,8 +1102,87 @@ def knowledge_document_edit(request: HttpRequest, doc_id: int) -> HttpResponse:
     )
 
 
+def _ai_configuration_fingerprint(configuration: AIConfiguration) -> str:
+    """Fingerprint all values that affect the provider connection test.
+
+    The credential itself is never persisted in the fingerprint; only its
+    one-way SHA-256 digest is included.
+    """
+    api_key = configuration.get_api_key() or os.environ.get("GROQ_API_KEY", "").strip()
+    payload = {
+        "provider": configuration.provider,
+        "model": configuration.model,
+        "temperature": str(configuration.temperature),
+        "max_tokens": configuration.max_tokens,
+        "api_key_sha256": hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+        if api_key else "",
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _test_ai_configuration(configuration: AIConfiguration) -> tuple[str, str]:
+    """Test only with a fixed synthetic note; never submit user/patient data."""
+    if configuration.provider == "synthetic":
+        return (
+            "passed",
+            "Synthetic configuration validated locally; no external request was made.",
+        )
+
+    if configuration.provider != "groq":
+        return (
+            "blocked",
+            "Gemini execution is not implemented in this build; no request was made.",
+        )
+
+    if not getattr(settings, "GROQ_PROVIDER_ENABLED", False):
+        return (
+            "blocked",
+            "Live provider testing is disabled in this local build; no request was made.",
+        )
+
+    api_key = configuration.get_api_key() or os.environ.get("GROQ_API_KEY", "").strip()
+    if not api_key:
+        return ("blocked", "No Groq API key is configured; no request was made.")
+
+    synthetic_note = (
+        "Synthetic provider connectivity test only. "
+        "Assessment: hypertension. Medication: metformin."
+    )
+    try:
+        from dashboard.extraction.groq_provider import (
+            GroqExtractionProvider,
+            GroqProviderConfigurationError,
+            GroqProviderError,
+        )
+        from dashboard.extraction.service import validate_extraction_output
+
+        provider = GroqExtractionProvider(
+            api_key=api_key,
+            model=configuration.model,
+        )
+        payload = provider.extract(synthetic_note)
+        validate_extraction_output(payload, synthetic_note)
+    except GroqProviderConfigurationError:
+        return ("blocked", "Groq client configuration is incomplete; no clinical note was sent.")
+    except GroqProviderError as exc:
+        return ("failed", f"Groq synthetic connection test failed ({exc.code}).")
+    except Exception as exc:
+        return (
+            "failed",
+            f"Groq synthetic connection test failed ({type(exc).__name__}).",
+        )
+
+    return (
+        "passed",
+        f"Groq synthetic extraction test passed for {configuration.model}; no patient data was used.",
+    )
+
+
 @role_required("Administrator")
 def settings_page(request: HttpRequest) -> HttpResponse:
+    """Manage versioned provider configuration with real synthetic-only tests."""
     active_configuration = AIConfiguration.objects.filter(is_active=True).first()
     draft = AIConfiguration.objects.filter(is_active=False).first()
     form = AIConfigurationForm(request.POST or None, instance=draft)
@@ -1110,158 +1190,86 @@ def settings_page(request: HttpRequest) -> HttpResponse:
 
     if request.method == "POST":
         action = request.POST.get("action")
-        if action in {"save_draft", "test", "activate"} and form.is_valid():
-            configuration = form.save(commit=False)
-            configuration.created_by = request.user
-            api_key = form.cleaned_data.get("api_key", "")
-            if api_key:
-                configuration.set_api_key(api_key)
-            configuration.version_number = (
-                (AIConfiguration.objects.order_by("-version_number").values_list("version_number", flat=True).first() or 0)
-                + 1
-            )
-            if action == "test":
-                if configuration.provider == "synthetic":
-                    configuration.last_test_status = "passed"
+        if action in {"save_draft", "test", "activate"}:
+            if form.is_valid():
+                configuration = form.save(commit=False)
+                if configuration.created_by_id is None:
+                    configuration.created_by = request.user
+
+                api_key = form.cleaned_data.get("api_key", "")
+                if api_key:
+                    configuration.set_api_key(api_key)
+
+                if not configuration.version_number:
+                    configuration.version_number = 1
+
+                if action == "save_draft":
+                    configuration.is_active = False
+                    configuration.last_test_status = "not_tested"
                     configuration.last_test_result = (
-                        "Synthetic configuration validated locally; no provider call was made."
+                        "Draft saved. Run a new synthetic connection test before activation."
                     )
-                elif action == "test":
-                    # If an API key is provided, validate and pass the configuration so it can be activated
-                    has_key = bool(api_key or getattr(configuration, "api_key_encrypted", ""))
-                    if has_key:
-                        configuration.last_test_status = "passed"
-                        configuration.last_test_result = (
-                            f"{configuration.get_provider_display()} credentials validated successfully; ready for activation."
-                        )
-                    else:
-                        configuration.last_test_status = "blocked"
-                        configuration.last_test_result = (
-                            "Live provider testing is disabled in this local build; no request was made."
-                        )
-                configuration.tested_at = timezone.now()
-            configuration.save()
-
-            if action == "activate":
-                # Activation is only allowed after a successful connectivity test.
-                if configuration.last_test_status != "passed":
-                    form.add_error(
-                        None,
-                        "Test this configuration successfully before activation.",
-                    )
-                else:
-                    # Proceed with activation. Mark test status as passed if it wasn't already.
-                    if configuration.last_test_status != "passed":
-                        configuration.last_test_status = "passed"
-                        configuration.last_test_result = f"{configuration.get_provider_display()} activated successfully."
-                        configuration.tested_at = timezone.now()
-                    AIConfiguration.objects.filter(is_active=True).update(
-                        is_active=False,
-                        activated_at=None,
-                        activated_by=None,
-                    )
-                    configuration.is_active = True
-                    configuration.activated_by = request.user
-                    configuration.activated_at = timezone.now()
+                    configuration.tested_fingerprint = ""
+                    configuration.tested_at = None
                     configuration.save()
-            # After any POST action, refresh draft. Re‑instantiate the form only when there are no errors (activation succeeded),
-            # so that validation errors (e.g., missing successful test) are preserved and displayed.
-            draft = configuration
-            if not form.errors:
-                form = AIConfigurationForm(instance=draft)
-            if action == "test":
-                test_result = configuration.last_test_result
-            elif action == "save_draft":
-                test_result = "Draft saved. It is not active."
-            # For activate we fall through to normal rendering.
-        elif action == "test":
-            # If form is invalid during test, still capture result.
-            test_result = "Form validation failed."
-    # Render
-    return render(
-        request,
-        "dashboard/settings.html",
-        {
-            "page_title": "AI settings",
-            "active_nav": "settings",
-            "form": form,
-            "active_configuration": active_configuration,
-            "draft": draft,
-            "test_result": test_result,
-            "provider_key_configured": bool(
-                os.environ.get("GROQ_API_KEY", "").strip()
-                or (draft and draft.has_api_key())
-            ),
-            "usage_configuration": active_configuration or draft,
-        },
-    )
-    active_configuration = AIConfiguration.objects.filter(is_active=True).first()
-    draft = AIConfiguration.objects.filter(is_active=False).first()
-    form = AIConfigurationForm(request.POST or None, instance=draft)
-    test_result = None
+                    test_result = configuration.last_test_result
 
-    if request.method == "POST":
-        action = request.POST.get("action")
-        if action in {"save_draft", "test", "activate"} and form.is_valid():
-            configuration = form.save(commit=False)
-            configuration.created_by = request.user
-            api_key = form.cleaned_data.get("api_key", "")
-            if api_key:
-                configuration.set_api_key(api_key)
-            configuration.version_number = (
-                (AIConfiguration.objects.order_by("-version_number").values_list("version_number", flat=True).first() or 0)
-                + 1
-            )
-            if action == "test":
-                if configuration.provider == "synthetic":
-                    configuration.last_test_status = "passed"
-                    configuration.last_test_result = (
-                        "Synthetic configuration validated locally; no provider call was made."
-                    )
                 elif action == "test":
-                    # If an API key is provided, validate and pass the configuration so it can be activated
-                    has_key = bool(api_key or getattr(configuration, "api_key_encrypted", ""))
-                    if has_key:
-                        configuration.last_test_status = "passed"
-                        configuration.last_test_result = (
-                            f"{configuration.get_provider_display()} credentials validated successfully; ready for activation."
-                        )
-                    else:
-                        configuration.last_test_status = "blocked"
-                        configuration.last_test_result = (
-                            "Live provider testing is disabled in this local build; no request was made."
-                        )
-                configuration.tested_at = timezone.now()
-            configuration.save()
-
-            if action == "activate":
-                # Activation is only allowed after a successful connectivity test.
-                if configuration.last_test_status != "passed":
-                    form.add_error(
-                        None,
-                        "Test this configuration successfully before activation.",
+                    status, result_text = _test_ai_configuration(configuration)
+                    configuration.is_active = False
+                    configuration.last_test_status = status
+                    configuration.last_test_result = result_text
+                    configuration.tested_at = timezone.now()
+                    configuration.tested_fingerprint = (
+                        _ai_configuration_fingerprint(configuration)
+                        if status == "passed"
+                        else ""
                     )
-                else:
-                    # Proceed with activation. Mark test status as passed if it wasn't already.
-                    if configuration.last_test_status != "passed":
-                        configuration.last_test_status = "passed"
-                        configuration.last_test_result = f"{configuration.get_provider_display()} activated successfully."
-                        configuration.tested_at = timezone.now()
-                    AIConfiguration.objects.filter(is_active=True).update(
-                        is_active=False,
-                        activated_at=None,
-                        activated_by=None,
-                    )
-                    configuration.is_active = True
-                    configuration.activated_by = request.user
-                    configuration.activated_at = timezone.now()
                     configuration.save()
-                    active_configuration = configuration
-            elif action == "test":
-                test_result = configuration.last_test_result
-            draft = configuration
-            if action == "save_draft":
-                test_result = "Draft saved. It is not active."
+                    test_result = result_text
+
+                elif action == "activate":
+                    current_fingerprint = _ai_configuration_fingerprint(configuration)
+                    test_matches_current_configuration = (
+                        configuration.last_test_status == "passed"
+                        and configuration.tested_fingerprint
+                        and configuration.tested_fingerprint == current_fingerprint
+                    )
+                    if not test_matches_current_configuration:
+                        configuration.is_active = False
+                        configuration.last_test_status = "not_tested"
+                        configuration.last_test_result = (
+                            "Configuration values or credentials changed after the last test. "
+                            "Run Test connection again before activation."
+                        )
+                        configuration.tested_fingerprint = ""
+                        configuration.tested_at = None
+                        configuration.save()
+                        form.add_error(None, configuration.last_test_result)
+                        test_result = configuration.last_test_result
+                    else:
+                        AIConfiguration.objects.filter(is_active=True).exclude(
+                            pk=configuration.pk
+                        ).update(
+                            is_active=False,
+                            activated_at=None,
+                            activated_by=None,
+                        )
+                        configuration.is_active = True
+                        configuration.activated_by = request.user
+                        configuration.activated_at = timezone.now()
+                        configuration.save()
+                        active_configuration = configuration
+                        test_result = (
+                            f"{configuration.get_provider_display()} / "
+                            f"{configuration.model} activated."
+                        )
+
+                draft = configuration
+                if not form.errors:
+                    form = AIConfigurationForm(instance=draft)
+            else:
+                test_result = "Form validation failed."
 
     return render(
         request,
