@@ -1162,6 +1162,8 @@ def _test_ai_configuration(configuration: AIConfiguration) -> tuple[str, str]:
         provider = GroqExtractionProvider(
             api_key=api_key,
             model=configuration.model,
+            temperature=float(configuration.temperature),
+            max_completion_tokens=configuration.max_tokens,
         )
         payload = provider.extract(synthetic_note)
         validate_extraction_output(payload, synthetic_note)
@@ -1473,14 +1475,14 @@ def run_ai_processing(
             GroqVerificationProvider,
         )
 
-        extraction_provider = GroqExtractionProvider(
-            api_key=api_key,
-            model=active_config.model,
-        )
-        verification_provider = GroqVerificationProvider(
-            api_key=api_key,
-            model=active_config.model,
-        )
+        provider_options = {
+            "api_key": api_key,
+            "model": active_config.model,
+            "temperature": float(active_config.temperature),
+            "max_completion_tokens": active_config.max_tokens,
+        }
+        extraction_provider = GroqExtractionProvider(**provider_options)
+        verification_provider = GroqVerificationProvider(**provider_options)
     else:
         from dashboard.extraction.local_provider import (
             LocalClinicalExtractionProvider,
