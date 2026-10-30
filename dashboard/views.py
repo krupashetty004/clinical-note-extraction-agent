@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 
+from django.contrib import messages
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Max, Prefetch, Q
 from django.http import Http404, HttpRequest, HttpResponse, JsonResponse
@@ -1411,7 +1412,7 @@ def run_ai_processing(
     request: HttpRequest,
     note_id: int,
 ) -> HttpResponse:
-    """Run clinical extraction and verification using the active AI configuration or local clinical AI engine."""
+    """Run only the explicitly selected, configured and approved provider."""
     authorized_patients = Patient.objects.accessible_to(request.user)
     note = get_object_or_404(
         ClinicalNote.objects.filter(encounter__patient__in=authorized_patients),
@@ -1419,24 +1420,69 @@ def run_ai_processing(
     )
 
     active_config = AIConfiguration.objects.filter(is_active=True).first()
-    if (
-        active_config
-        and active_config.provider == "groq"
-        and getattr(settings, "GROQ_PROVIDER_ENABLED", False)
-        and getattr(settings, "EXTERNAL_CLINICAL_DATA_APPROVED", False)
-        and os.environ.get("GROQ_API_KEY", "").strip()
-    ):
+    if active_config and active_config.provider == "gemini":
+        messages.error(
+            request,
+            "Gemini processing is not available because its provider adapter is not implemented. "
+            "No alternative provider was selected.",
+        )
+        return redirect(
+            "dashboard:patient_detail",
+            patient_id=note.encounter.patient_id,
+        )
+
+    if active_config and active_config.provider == "groq":
+        if not getattr(settings, "GROQ_PROVIDER_ENABLED", False):
+            messages.error(
+                request,
+                "Groq is disabled in this environment. No alternative provider was selected.",
+            )
+            return redirect(
+                "dashboard:patient_detail",
+                patient_id=note.encounter.patient_id,
+            )
+        if not getattr(settings, "EXTERNAL_CLINICAL_DATA_APPROVED", False):
+            messages.error(
+                request,
+                "External clinical-note processing has not been approved. "
+                "The note was not sent to Groq and no alternative provider was selected.",
+            )
+            return redirect(
+                "dashboard:patient_detail",
+                patient_id=note.encounter.patient_id,
+            )
+
+        api_key = active_config.get_api_key() or os.environ.get("GROQ_API_KEY", "").strip()
+        if not api_key:
+            messages.error(
+                request,
+                "The active Groq configuration has no usable credential. "
+                "No alternative provider was selected.",
+            )
+            return redirect(
+                "dashboard:patient_detail",
+                patient_id=note.encounter.patient_id,
+            )
+
         from dashboard.extraction.groq_provider import (
             GroqExtractionProvider,
             GroqVerificationProvider,
         )
-        extraction_provider = GroqExtractionProvider()
-        verification_provider = GroqVerificationProvider()
+
+        extraction_provider = GroqExtractionProvider(
+            api_key=api_key,
+            model=active_config.model,
+        )
+        verification_provider = GroqVerificationProvider(
+            api_key=api_key,
+            model=active_config.model,
+        )
     else:
         from dashboard.extraction.local_provider import (
             LocalClinicalExtractionProvider,
             LocalClinicalVerificationProvider,
         )
+
         extraction_provider = LocalClinicalExtractionProvider()
         verification_provider = LocalClinicalVerificationProvider()
 
