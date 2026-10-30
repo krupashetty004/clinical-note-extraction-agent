@@ -275,6 +275,10 @@ class KnowledgeBaseTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'value="local-synthetic-v1"')
         self.assertContains(response, 'value="openai/gpt-oss-20b"')
+        self.assertContains(response, 'value="openai/gpt-oss-120b"')
+        self.assertContains(response, 'value="qwen/qwen3.8-27b"')
+        self.assertNotContains(response, "llama-3.3-70b-versatile")
+        self.assertNotContains(response, "llama-3.2-11b-vision-preview")
         self.assertContains(response, 'name="api_key"')
 
         self.client.post(
@@ -325,6 +329,7 @@ class KnowledgeBaseTests(TestCase):
         self.assertTrue(configuration.is_active)
         self.assertEqual(configuration.activated_by, self.admin)
 
+    @override_settings(GROQ_PROVIDER_ENABLED=True)
     @patch("dashboard.extraction.groq_provider.GroqExtractionProvider")
     def test_groq_connection_test_uses_saved_key_and_model_with_synthetic_input(
         self,
@@ -341,7 +346,7 @@ class KnowledgeBaseTests(TestCase):
             reverse("dashboard:settings"),
             {
                 "provider": "groq",
-                "model": "llama-3.3-70b-versatile",
+                "model": "openai/gpt-oss-120b",
                 "temperature": "0",
                 "max_tokens": "1024",
                 "api_key": "gsk-synthetic-test-key",
@@ -352,11 +357,13 @@ class KnowledgeBaseTests(TestCase):
         self.assertEqual(response.status_code, 200)
         configuration = AIConfiguration.objects.get()
         self.assertEqual(configuration.last_test_status, "passed")
-        self.assertEqual(configuration.model, "llama-3.3-70b-versatile")
+        self.assertEqual(configuration.model, "openai/gpt-oss-120b")
         self.assertEqual(len(configuration.tested_fingerprint), 64)
         mock_provider_class.assert_called_once_with(
             api_key="gsk-synthetic-test-key",
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
+            temperature=0.0,
+            max_completion_tokens=1024,
         )
         test_note = mock_provider.extract.call_args.args[0]
         self.assertIn("Synthetic provider connectivity test", test_note)
@@ -366,7 +373,7 @@ class KnowledgeBaseTests(TestCase):
             reverse("dashboard:settings"),
             {
                 "provider": "groq",
-                "model": "llama-3.3-70b-versatile",
+                "model": "openai/gpt-oss-120b",
                 "temperature": "0",
                 "max_tokens": "1024",
                 "api_key": "********",
