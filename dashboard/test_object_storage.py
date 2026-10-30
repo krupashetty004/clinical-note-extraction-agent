@@ -11,6 +11,7 @@ from django.test import SimpleTestCase, override_settings
 
 from config.storage import (
     LOCAL_STORAGE_BACKEND,
+    NEON_OBJECT_STORAGE_REGIONS,
     NEON_STORAGE_BACKEND,
     build_default_storage_config,
     neon_object_storage_enabled,
@@ -63,6 +64,17 @@ class NeonStorageConfigurationTests(SimpleTestCase):
         self.assertEqual(options["querystring_expire"], 300)
         self.assertFalse(options["file_overwrite"])
         self.assertEqual(options["endpoint_url"], "https://storage.example.invalid")
+
+    def test_neon_storage_rejects_regions_not_currently_supported(self):
+        environment = {
+            **VALID_ENVIRONMENT,
+            "AWS_REGION": "ap-south-1",
+        }
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "not currently supported by Neon Object Storage",
+        ):
+            build_default_storage_config(environment)
 
     def test_http_or_credential_bearing_endpoint_is_rejected(self):
         for endpoint in (

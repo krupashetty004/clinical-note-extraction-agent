@@ -8,6 +8,12 @@ from urllib.parse import urlsplit
 
 LOCAL_STORAGE_BACKEND = "django.core.files.storage.FileSystemStorage"
 NEON_STORAGE_BACKEND = "storages.backends.s3.S3Storage"
+NEON_OBJECT_STORAGE_REGIONS = frozenset({
+    "us-east-2",
+    "us-east-1",
+    "eu-central-1",
+    "ap-southeast-1",
+})
 
 
 def neon_object_storage_enabled(environment: Mapping[str, str]) -> bool:
@@ -49,6 +55,13 @@ def build_default_storage_config(
         raise RuntimeError(
             "Neon Object Storage is enabled but required environment variables "
             f"are missing: {', '.join(missing)}."
+        )
+
+    if values["AWS_REGION"] not in NEON_OBJECT_STORAGE_REGIONS:
+        supported = ", ".join(sorted(NEON_OBJECT_STORAGE_REGIONS))
+        raise RuntimeError(
+            "AWS_REGION is not currently supported by Neon Object Storage. "
+            f"Supported regions: {supported}."
         )
 
     endpoint = urlsplit(values["AWS_ENDPOINT_URL_S3"])

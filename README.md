@@ -124,7 +124,7 @@ Go to **Knowledge Base → Upload Document** to add clinical guidelines, protoco
 Local development uses Django's local filesystem storage by default. For a hosted environment, configure a private Neon Object Storage bucket before enabling persistent source-file uploads. The application never makes source buckets public.
 
 1. In Neon, create an Object Storage bucket and set its access to **private**.
-2. Create a branch-scoped Neon credential with both `storage:read` and `storage:write` scopes. Keep the credentials in the deployment environment, not in Git.
+2. Confirm the Neon project is in a currently supported Object Storage region: `us-east-2`, `us-east-1`, `eu-central-1`, or `ap-southeast-1`. Create a branch-scoped Neon credential with both `storage:read` and `storage:write` scopes. Keep credentials in the deployment environment, not in Git.
 3. Configure these environment variables in the local environment or Render service:
 
 ```text

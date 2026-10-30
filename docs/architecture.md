@@ -77,7 +77,7 @@ flowchart TD
     REVIEW --> JSON
 ```
 
-**Storage note:** Neon is the proposed PostgreSQL provider and supports pgvector. Neon Object Storage is the preferred file-storage choice: it is generally available, S3-compatible, supports private buckets and branch-scoped credentials, and the Free plan currently lists 5 GB per project. The Django storage adapter is opt-in and uses private S3-compatible access. A live smoke test against the specific Neon project/branch and bucket is still required before hosted uploads are enabled. If that test fails, evaluate Supabase Storage Free as a fallback without changing the Neon database decision. Reconfirm allowances before deployment.
+**Storage note:** Neon is the proposed PostgreSQL provider and supports pgvector. Neon Object Storage is the preferred file-storage choice: it is generally available, S3-compatible, supports private buckets and branch-scoped credentials, and the Free plan currently lists 5 GB per project. Its currently documented supported regions are `us-east-2`, `us-east-1`, `eu-central-1`, and `ap-southeast-1`. The Django storage adapter is opt-in and uses private S3-compatible access. A live smoke test against the specific Neon project/branch and bucket is still required before hosted uploads are enabled. If that test fails, evaluate Supabase Storage Free as a fallback without changing the Neon database decision. Reconfirm allowances before deployment.
 
 ## 4. Data Sources Must Stay Distinct
 
