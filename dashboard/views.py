@@ -324,7 +324,7 @@ def _build_annotation_queue() -> list[dict]:
             "annotation_status": "not_annotated",
             "label_source": "unannotated",
             "clinical_performance_eligible": False,
-            "adjudication_status": "not_reviewed",
+            "adjudication_status": "not_required",
             "conflict_status": "not_reviewed",
             "conflict_notes": "",
             "reviewer_decision": "pending",

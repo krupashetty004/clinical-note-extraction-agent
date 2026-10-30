@@ -297,18 +297,22 @@ def evaluation_cases_from_records(
                 exported = dict(item)
                 exported["category"] = category
                 items.append(exported)
-        cases.append(
-            {
-                "case_id": record["record_id"],
-                "note": record["note_text"],
-                "gold_items": items,
-                "expected_needs_review": expected_review,
-                "gold_qualified": record.get("label_source") != "model_generated_gold",
-                "label_source": record.get("label_source", "unknown"),
-                "source_dataset": record["source_dataset"],
-                "source_row_number": record["source_row_number"],
-            }
-        )
+        is_model_label = record.get("label_source") == "model_generated_gold"
+        case = {
+            "case_id": record["record_id"],
+            "note": record["note_text"],
+            "gold_items": items,
+            "expected_needs_review": expected_review,
+            "gold_qualified": not is_model_label,
+            "label_source": "ai_model" if is_model_label else record.get("label_source", "unknown"),
+            "source_dataset": record["source_dataset"],
+            "source_row_number": record["source_row_number"],
+        }
+        if is_model_label:
+            case["model_provider"] = record.get("model_provider", "")
+            case["model_id"] = record.get("model_id", "")
+            case["clinical_performance_eligible"] = False
+        cases.append(case)
     return cases, errors
 
 

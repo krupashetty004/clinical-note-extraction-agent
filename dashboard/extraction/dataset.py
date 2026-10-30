@@ -270,6 +270,12 @@ def _is_complete_ai_benchmark_record(metadata: dict[str, Any]) -> bool:
         and bool(metadata["model_provider"].strip())
         and isinstance(metadata.get("model_id"), str)
         and bool(metadata["model_id"].strip())
+        and isinstance(metadata.get("label_provenance"), dict)
+        and all(
+            isinstance(metadata["label_provenance"].get(field), str)
+            and metadata["label_provenance"][field].strip()
+            for field in ("model_or_provider", "generation_timestamp", "annotation_guidelines")
+        )
         and isinstance(annotations, dict)
         and all(isinstance(annotations.get(field), list) for field in AI_ANNOTATION_FIELDS)
     )
@@ -285,8 +291,8 @@ def annotation_readiness(result: DatasetLoadResult) -> dict[str, Any]:
     adjudicated = [
         record
         for record in complete
-        if record.metadata.get("adjudication_status")
-        in {"adjudicated", "not_required"}
+        if _has_gold_label_provenance(record.metadata)
+        and record.metadata.get("adjudication_status") == "adjudicated"
     ]
     eligible = [
         record

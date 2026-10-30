@@ -268,6 +268,11 @@ class DatasetLoaderTests(SimpleTestCase):
                     "clinical_performance_eligible": False,
                     "model_provider": "test-provider",
                     "model_id": "synthetic-model-v1",
+                    "label_provenance": {
+                        "model_or_provider": "test-provider/synthetic-model-v1",
+                        "generation_timestamp": "2026-10-30T00:00:00Z",
+                        "annotation_guidelines": "synthetic-label-rules-v1",
+                    },
                 }
             ]
         )
