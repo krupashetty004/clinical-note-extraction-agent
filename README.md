@@ -107,62 +107,38 @@ To use the built-in synthetic data demo (no real notes needed), set `SYNTHETIC_D
 
 Go to **Knowledge Base → Upload Document** to add clinical guidelines, protocols, or reference documents (`.txt`, `.pdf`, `.md`, `.wav`, `.mp3`).
 
-- Text and PDF content is extracted and stored as knowledge passages.
-- The RAG service retrieves relevant passages during AI extraction to improve context.
+- Text and selectable-text PDF ingestion are implemented with limitations documented in the dataset and architecture notes.
+- A local lexical RAG retrieval service exists, but it is not yet connected to the production clinical-processing workflow. Do not assume knowledge-base context is used during note extraction.
 
 ---
 
-## Annotation Queue (Gold Data)
+## Dataset preparation and annotation
 
-The annotation workflow is at `/annotation/`. The working queue is loaded from:
+The MTSamples preparation tools live in `mirai_dataset_preparation_pack/`. Place the CSV at:
 
-- Template: `mirai_dataset_preparation_pack/data/external/mtsamples/annotations/annotation_template_100.jsonl`
-- Working draft: `.annotation_working_queue.jsonl` (git-ignored, created at repo root)
+`mirai_dataset_preparation_pack/data/external/mtsamples/raw/mtsamples.csv`
 
-To regenerate the gold annotations:
+Then run from the repository root:
 
-```bash
-python scripts/generate_golden_annotations.py
+```powershell
+python .\\mirai_dataset_preparation_pack\\scripts\\analyze_mtsamples.py
 ```
 
----
+The analyzer prepares a full normalized local corpus, a deterministic 100-note specialty-balanced annotation queue, and aggregate quality reports under `.dataset_working/\`. That directory and the raw CSV are Git-ignored because they contain clinical narratives.
 
-## Evaluation (SOW Benchmark)
+The 100-note queue starts unannotated. MTSamples specialty labels and keywords are not gold entity annotations. Never mark automatically generated labels as human gold or independently adjudicated. AI-generated labels may be tracked separately as provisional benchmark labels, not clinical gold.
 
-Run the full SOW evaluation pipeline:
-
-```bash
-# 1. Generate gold annotations (AI-marked, not manually reviewed)
-python scripts/generate_golden_annotations.py
-
-# 2. Populate challenge observations
-python scripts/complete_challenge_observations.py
-
-# 3. Run prediction scoring
-python scripts/run_full_evaluation.py
-
-# 4. Print the SOW scorecard
-python scripts/print_scorecard.py
-```
-
-The final report is written to `reports/final_sow_evaluation_report.json`.
-
-### SOW Scorecard (current results)
-
-| Metric | Target | Result | Status |
-|--------|--------|--------|--------|
-| Diagnosis F1 | ≥ 0.80 | 0.9971 | ✅ PASS |
-| Medication F1 | ≥ 0.85 | 1.0000 | ✅ PASS |
-| Evidence Faithfulness | 100% | 1.0000 | ✅ PASS |
-| Status Accuracy | ≥ 90% | 1.0000 | ✅ PASS |
-| ICD-10 Top-3 Hit Rate | ≥ 75% | 0.9937 | ✅ PASS |
-| Contradiction Detection | ≥ 80% on ≥20 cases | 1.0000 | ✅ PASS |
-| Rare Diagnosis Abstention | ≥ 80% on ≥10 cases | 1.0000 | ✅ PASS |
-| Adversarial Handling | 100% on ≥10 cases | 1.0000 | ✅ PASS |
-| Median Latency | < 30 s | 1.8 s | ✅ PASS |
-| Improvement over baseline | measurable | +0.1669 F1 | ✅ PASS |
+The annotation UI currently uses its repository-backed template and a separate local working queue; integration of the newly prepared CSV queue into the live workflow is still pending.
 
 ---
+
+## Evaluation status
+
+The repository contains synthetic smoke tests, challenge observations and measured synthetic benchmark tooling. Their results are not interchangeable with independent clinical gold-standard evaluation.
+
+Do not use the legacy generated scorecard as proof that the original acceptance targets have been met. The MTSamples source does not provide note-level gold entity spans, assertion labels, or validated ICD-10-CM labels. It therefore cannot independently establish diagnosis/medication F1, evidence faithfulness, status accuracy or coding accuracy without suitable validated annotations.
+
+The current 100-record file in the repository must not be treated as 100 independently adjudicated clinical gold notes. Check `docs/evaluation-plan.md` before reporting evaluation results.
 
 ## Running Tests
 
@@ -179,7 +155,7 @@ python manage.py test evaluation
 python -m unittest discover -s mirai_dataset_preparation_pack/tests -v
 ```
 
-Current status: **330 tests, all PASS**
+Run the automated checks in GitHub Actions for the exact branch/commit being reviewed. Do not rely on a stale test count in this README.
 
 ---
 
@@ -240,9 +216,10 @@ Set these in a `.env` file at the project root (never commit it).
 
 ## Confidentiality
 
-- Keep this repository private.
-- Never commit the SOW, real clinical datasets, patient data, API keys, or uploaded files.
-- The public demo uses synthetic patient data only.
+- This repository is currently public. Treat every committed file as publicly accessible.
+- Never commit the raw MTSamples CSV, normalized note-level records, annotation queues containing note text, the SOW, patient data, API keys, or uploaded files.
+- Keep raw and generated dataset files in the Git-ignored local `.dataset_working/` directory.
+- The public demo must use synthetic patient data only.
 - All clinical processing runs require doctor authentication and explicit patient access grants.
 
 ---
