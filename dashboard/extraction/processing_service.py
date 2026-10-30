@@ -116,24 +116,26 @@ def process_clinical_note(
     run.started_at = timezone.now()
 
     reference_context: list[dict] = []
-    retrieval_status = "no_matches"
+    retrieval_status = "not_attempted"
     try:
-        retrieval_query = _build_knowledge_query(note.original_text)
-        if retrieval_query:
-            passages = retrieve_knowledge_passages(
-                retrieval_query,
-                top_k=3,
-                min_score=0.15,
-            )
-            if passages:
-                retrieval_status = "retrieved"
-                reference_context = [
-                    {
-                        **_knowledge_reference_trace(passage),
-                        "text": passage["text"],
-                    }
-                    for passage in passages
-                ]
+        if execution_mode != ClinicalProcessingRun.ExecutionMode.SYNTHETIC_DEMO:
+            retrieval_status = "no_matches"
+            retrieval_query = _build_knowledge_query(note.original_text)
+            if retrieval_query:
+                passages = retrieve_knowledge_passages(
+                    retrieval_query,
+                    top_k=3,
+                    min_score=0.15,
+                )
+                if passages:
+                    retrieval_status = "retrieved"
+                    reference_context = [
+                        {
+                            **_knowledge_reference_trace(passage),
+                            "text": passage["text"],
+                        }
+                        for passage in passages
+                    ]
     except Exception as exc:
         # Retrieval is supplementary. Preserve the clinical workflow and
         # record only a safe status; never log query or document content.
