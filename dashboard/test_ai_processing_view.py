@@ -8,6 +8,7 @@ from django.utils import timezone
 from unittest.mock import patch
 
 from dashboard.models import (
+    AIConfiguration,
     ClinicalNote,
     ClinicalProcessingRun,
     Encounter,
@@ -140,19 +141,28 @@ class AIProcessingViewTests(TestCase):
         mock_groq_extractor,
     ):
         """External provider use remains blocked without explicit data approval."""
+        configuration = AIConfiguration.objects.create(
+            provider="groq",
+            model="openai/gpt-oss-20b",
+            created_by=self.doctor,
+            is_active=True,
+        )
+        configuration.set_api_key("synthetic-test-key")
+        configuration.save()
+
         with patch.dict("os.environ", {"GROQ_API_KEY": "synthetic-test-key"}):
             response = self.client.post(
                 reverse("dashboard:run_ai_processing", kwargs={"note_id": self.note.pk}),
+                follow=True,
             )
 
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "External clinical-note processing has not been approved")
         mock_groq_extractor.assert_not_called()
         mock_groq_verifier.assert_not_called()
-        run = ClinicalProcessingRun.objects.filter(
-            clinical_note=self.note,
-        ).latest("created_at")
-        entities = [item["entity"].lower() for item in run.extraction_result["items"]]
-        self.assertTrue(any("hypertension" in entity for entity in entities))
+        self.assertFalse(
+            ClinicalProcessingRun.objects.filter(clinical_note=self.note).exists()
+        )
 
     # ------------------------------------------------------------------
     # Access control
