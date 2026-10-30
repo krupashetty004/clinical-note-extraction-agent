@@ -1415,6 +1415,7 @@ def run_ai_processing(
         active_config
         and active_config.provider == "groq"
         and getattr(settings, "GROQ_PROVIDER_ENABLED", False)
+        and getattr(settings, "EXTERNAL_CLINICAL_DATA_APPROVED", False)
         and os.environ.get("GROQ_API_KEY", "").strip()
     ):
         from dashboard.extraction.groq_provider import (
