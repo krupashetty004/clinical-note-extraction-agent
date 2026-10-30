@@ -267,6 +267,9 @@ def _load_annotation_queue_from_jsonl(path: Path) -> list[dict]:
                 raise ValueError(f"Annotation queue record {record_id} has no source note text.")
             if not isinstance(source_dataset, str) or not source_dataset.strip():
                 raise ValueError(f"Annotation queue record {record_id} has no source dataset.")
+            source_url = record.get("source_url")
+            if not isinstance(source_url, str) or not source_url.strip():
+                raise ValueError(f"Annotation queue record {record_id} has no source URL.")
             if not isinstance(source_row, int) or isinstance(source_row, bool) or source_row < 1:
                 raise ValueError(f"Annotation queue record {record_id} has an invalid source row.")
             if not isinstance(specialty, str) or not specialty.strip():

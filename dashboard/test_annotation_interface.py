@@ -89,7 +89,7 @@ class LocalAnnotationInterfaceTests(TestCase):
         response = self.client.get(reverse("dashboard:annotation_queue"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Local annotation queue")
-        self.assertContains(response, "2-note queue")
+        self.assertContains(response, "2-note local queue")
         self.assertContains(response, "synthetic-annotation-001")
         self.assertContains(response, "Synthetic Surgery")
         self.assertContains(response, "synthetic-annotation-002")

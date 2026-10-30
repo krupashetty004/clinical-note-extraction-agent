@@ -362,6 +362,17 @@ def main(argv: list[str] | None = None) -> int:
     duplicate_ids = [record_id for record_id, count in Counter(ids).items() if count > 1]
     if duplicate_ids:
         errors.append(f"duplicate record_id values found: {len(duplicate_ids)}")
+    source_rows = [
+        (r.get("source_dataset"), r.get("source_row_number"))
+        for r in records
+    ]
+    duplicate_source_rows = [
+        source_row
+        for source_row, count in Counter(source_rows).items()
+        if count > 1
+    ]
+    if duplicate_source_rows:
+        errors.append(f"duplicate source-row mappings found: {len(duplicate_source_rows)}")
     complete = [r for r in records if r.get("annotation_complete") is True]
     qualified, qualification_errors_found = evaluation_ready_records(
         records,
@@ -393,9 +404,12 @@ def main(argv: list[str] | None = None) -> int:
         "qualified_gold_records": len(qualified),
         "qualification_errors": len(qualification_errors_found),
         "validation_errors": len(errors),
+        "minimum_specialties_required": 10,
+        "specialty_coverage_met": len(complete_specialties) >= 10,
         "gold_evaluation_ready": (
             not errors
             and len(qualified) > 0
+            and len(complete_specialties) >= 10
             and (not args.require_complete or len(complete) == len(records))
             and (not args.require_qualified or len(qualified) == len(records))
         ),
