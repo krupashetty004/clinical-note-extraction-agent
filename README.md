@@ -86,8 +86,13 @@ Open **http://127.0.0.1:8000/** in your browser and sign in.
 
 On the patient detail page, click **"Process with AI Agent"** (POST to `/notes/<id>/process/`).
 
-- The **local offline extraction engine** (`LocalClinicalExtractionProvider`) is the default and makes no network call.
-- Enabling Groq for synthetic adapter tests with `MIRAI_ENABLE_GROQ_PROVIDER=1` does not permit Doctor notes to be sent externally. The Doctor workflow also requires `MIRAI_EXTERNAL_CLINICAL_DATA_APPROVED=1`, which must only be set after the required Mirai Labs privacy/security approval, and a configured Groq key. Without that approval, it continues to use the local provider.
+- With no active AI configuration, or with the local synthetic configuration active, the **local offline extraction engine** (`LocalClinicalExtractionProvider`) is used and makes no network call.
+- The Administrator **AI settings → Test connection** action uses a fixed synthetic note only. Groq tests run the configured model and validate its structured extraction response; the settings page does not send patient data.
+- Provider activation is allowed only when the test passed for the exact same provider, model, temperature, token limit and credential fingerprint. Changing one of those values requires a new test.
+- Groq choices currently include `openai/gpt-oss-20b`, `openai/gpt-oss-120b`, and `qwen/qwen3.8-27b`. Deprecated Llama model IDs were removed.
+- Gemini is displayed as unsupported because its execution adapter is not implemented. Selecting an unsupported provider does not silently switch to another provider.
+- To run Doctor notes through Groq, all of the following are required: `MIRAI_ENABLE_GROQ_PROVIDER=1` in the local development environment, `MIRAI_EXTERNAL_CLINICAL_DATA_APPROVED=1` after formal Mirai Labs privacy/security approval, an active Groq configuration, and a usable configured credential. If any condition is missing, the request is blocked and the doctor receives a visible message; it does not fall back silently.
+- The active provider model, saved encrypted key, temperature and completion-token limit are passed to both Groq extraction and verification.
 
 The run is saved and you are redirected to the processing run detail page.
 
