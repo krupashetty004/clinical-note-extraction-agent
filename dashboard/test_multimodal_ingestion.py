@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, override_settings
 
+from dashboard.forms import KnowledgeDocumentForm
 from dashboard.knowledge_ingestion import (
     AUDIO_TRANSCRIPTION_MODEL,
     KnowledgeIngestionError,
@@ -176,6 +177,49 @@ class MultimodalIngestionTests(SimpleTestCase):
             extract_uploaded_source(self._audio_upload())
 
         groq_class.assert_not_called()
+
+    def test_knowledge_document_form_accepts_audio_for_review_ingestion(self):
+        audio = SimpleUploadedFile(
+            "synthetic-dictation.wav",
+            b"RIFF" + b"\\x24\\x00\\x00\\x00" + b"WAVE" + b"synthetic-audio",
+            content_type="audio/wav",
+        )
+        form = KnowledgeDocumentForm(
+            data={
+                "title": "Synthetic audio reference",
+                "summary": "Synthetic test fixture",
+                "content": "",
+                "priority": "0",
+                "is_active": "",
+            },
+            files={"source_file": audio},
+        )
+
+        self.assertTrue(form.is_valid(), form.errors.as_text())
+        self.assertEqual(
+            form.cleaned_data["source_file"].name,
+            "synthetic-dictation.wav",
+        )
+
+    def test_knowledge_document_form_rejects_invalid_audio_signature(self):
+        audio = SimpleUploadedFile(
+            "synthetic-dictation.wav",
+            b"not-a-wave-file",
+            content_type="audio/wav",
+        )
+        form = KnowledgeDocumentForm(
+            data={
+                "title": "Invalid audio fixture",
+                "summary": "",
+                "content": "",
+                "priority": "0",
+                "is_active": "",
+            },
+            files={"source_file": audio},
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("valid WAV audio file", str(form.errors))
 
     def test_uploaded_files_over_ten_megabytes_are_rejected(self):
         upload = SimpleUploadedFile(
