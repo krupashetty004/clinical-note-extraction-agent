@@ -15,16 +15,11 @@ from typing import Any, Iterator
 PACKAGE_ROOT = (
     Path(__file__).resolve().parents[2] / "mirai_dataset_preparation_pack"
 )
-PREPARED_RECORDS_PATH = (
-    PACKAGE_ROOT / "data" / "external" / "mtsamples" / "prepared" / "records.jsonl"
-)
+REPOSITORY_ROOT = PACKAGE_ROOT.parent
+LOCAL_DATA_ROOT = REPOSITORY_ROOT / ".dataset_working"
+PREPARED_RECORDS_PATH = LOCAL_DATA_ROOT / "prepared" / "records.jsonl"
 ANNOTATION_QUEUE_PATH = (
-    PACKAGE_ROOT
-    / "data"
-    / "external"
-    / "mtsamples"
-    / "annotations"
-    / "annotation_template_100.jsonl"
+    LOCAL_DATA_ROOT / "annotations" / "annotation_template_100.jsonl"
 )
 
 REQUIRED_RECORD_FIELDS = {
