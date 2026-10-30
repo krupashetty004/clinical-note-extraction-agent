@@ -8,6 +8,8 @@ No external AI provider is configured automatically.
 """
 
 import logging
+import re
+from collections import Counter
 
 from django.utils import timezone
 
@@ -16,9 +18,59 @@ from dashboard.extraction.orchestrator import (
     run_agent_workflow,
 )
 from dashboard.extraction.pipeline import ExtractionProvider
+from dashboard.extraction.rag_service import retrieve_knowledge_passages
 from dashboard.models import ClinicalNote, ClinicalProcessingRun
 
 logger = logging.getLogger(__name__)
+
+_RAG_STOPWORDS = {
+    "a", "about", "after", "again", "all", "also", "am", "an", "and",
+    "are", "as", "at", "be", "been", "before", "being", "between", "but",
+    "by", "can", "could", "did", "do", "does", "during", "for", "from",
+    "had", "has", "have", "he", "her", "here", "hers", "him", "his",
+    "how", "i", "if", "in", "into", "is", "it", "its", "may", "me",
+    "might", "more", "most", "no", "not", "of", "on", "or", "our",
+    "out", "over", "patient", "she", "should", "so", "some", "such",
+    "than", "that", "the", "their", "them", "then", "there", "these",
+    "they", "this", "those", "through", "to", "under", "up", "very",
+    "was", "we", "were", "what", "when", "where", "which", "while",
+    "who", "will", "with", "would", "you", "your",
+}
+
+
+def _build_knowledge_query(original_note: str, *, max_terms: int = 16) -> str:
+    """Build a bounded lexical query without storing or logging note content."""
+    tokens = [
+        token.casefold()
+        for token in re.findall(r"[^\\W_]+", original_note, flags=re.UNICODE)
+        if len(token) > 2 and token.casefold() not in _RAG_STOPWORDS
+    ]
+    if not tokens:
+        return ""
+    counts = Counter(tokens)
+    first_seen = {token: index for index, token in enumerate(tokens)}
+    ranked = sorted(
+        counts,
+        key=lambda token: (-counts[token], first_seen[token], -len(token)),
+    )
+    return " ".join(ranked[:max_terms])
+
+
+def _knowledge_reference_trace(passage: dict) -> dict:
+    """Persist citation and chunk metadata, not the full reference text."""
+    return {
+        "document_id": passage["document_id"],
+        "title": passage["title"],
+        "version": passage["version"],
+        "priority": passage["priority"],
+        "source_type": passage["source_type"],
+        "source_filename": passage["source_filename"],
+        "source_citations": passage["source_citations"],
+        "chunk_index": passage["chunk_index"],
+        "start_offset": passage["start_offset"],
+        "end_offset": passage["end_offset"],
+        "score": passage["score"],
+    }
 
 
 def process_clinical_note(
@@ -62,15 +114,61 @@ def process_clinical_note(
 
     run.status = ClinicalProcessingRun.Status.RUNNING
     run.started_at = timezone.now()
-    run.save(update_fields=["status", "started_at"])
+
+    reference_context: list[dict] = []
+    retrieval_status = "no_matches"
+    try:
+        retrieval_query = _build_knowledge_query(note.original_text)
+        if retrieval_query:
+            passages = retrieve_knowledge_passages(
+                retrieval_query,
+                top_k=3,
+                min_score=0.15,
+            )
+            if passages:
+                retrieval_status = "retrieved"
+                reference_context = [
+                    {
+                        **_knowledge_reference_trace(passage),
+                        "text": passage["text"],
+                    }
+                    for passage in passages
+                ]
+    except Exception as exc:
+        # Retrieval is supplementary. Preserve the clinical workflow and
+        # record only a safe status; never log query or document content.
+        retrieval_status = "unavailable"
+        logger.warning(
+            "Knowledge retrieval unavailable (exception_type=%s).",
+            type(exc).__name__,
+        )
+
+    run.knowledge_retrieval_status = retrieval_status
+    run.knowledge_references = [
+        _knowledge_reference_trace(item)
+        for item in reference_context
+    ]
+    run.save(
+        update_fields=[
+            "status",
+            "started_at",
+            "knowledge_retrieval_status",
+            "knowledge_references",
+        ]
+    )
 
     try:
+        workflow_kwargs = {
+            "max_extraction_attempts": max_extraction_attempts,
+            "max_verification_attempts": max_verification_attempts,
+        }
+        if reference_context:
+            workflow_kwargs["reference_context"] = reference_context
         result = run_agent_workflow(
             extraction_provider,
             verification_provider,
             note.original_text,
-            max_extraction_attempts=max_extraction_attempts,
-            max_verification_attempts=max_verification_attempts,
+            **workflow_kwargs,
         )
     except Exception as exc:
         # Log only the exception class, never its message or clinical text.
@@ -145,6 +243,8 @@ def process_clinical_note(
             "extraction_result",
             "coding_result",
             "verification_result",
+            "knowledge_references",
+            "knowledge_retrieval_status",
             "item_dispositions",
             "review_reasons",
             "failure_code",
