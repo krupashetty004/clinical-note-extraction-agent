@@ -41,6 +41,24 @@ EMPTY_VERIFICATION = {
 
 
 class GroqProviderTests(SimpleTestCase):
+    @patch("dashboard.extraction.groq_provider._build_groq_client")
+    def test_provider_uses_explicit_configuration_key_and_model(self, build_client):
+        client = fake_client(json.dumps(EMPTY_EXTRACTION))
+        build_client.return_value = client
+
+        provider = GroqExtractionProvider(
+            api_key="synthetic-config-key",
+            model="configured-model",
+        )
+        provider.extract("Synthetic provider configuration test.")
+
+        build_client.assert_called_once_with(api_key="synthetic-config-key")
+        self.assertEqual(provider.model_id, "configured-model")
+        self.assertEqual(
+            client.chat.completions.create.call_args.kwargs["model"],
+            "configured-model",
+        )
+
     def test_extraction_provider_returns_json_object_and_uses_no_sdk_retries(self):
         client = fake_client(json.dumps(EMPTY_EXTRACTION))
         provider = GroqExtractionProvider(client=client, model="unit-test-model")
