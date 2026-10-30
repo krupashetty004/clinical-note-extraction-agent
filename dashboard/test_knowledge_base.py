@@ -163,6 +163,34 @@ class KnowledgeBaseTests(TestCase):
         edit_page = self.client.get(response.url)
         self.assertContains(edit_page, "Review this extracted guidance")
 
+    def test_reviewed_upload_is_published_before_rag_can_retrieve_it(self):
+        document = KnowledgeDocument.objects.create(
+            title="Uploaded hypertension guidance",
+            content="Hypertension management includes appropriate follow-up.",
+            ingestion_status="needs_review",
+            is_active=False,
+            created_by=self.admin,
+        )
+
+        response = self.client.post(
+            reverse("dashboard:knowledge_document_edit", kwargs={"doc_id": document.pk}),
+            {
+                "title": document.title,
+                "summary": "Reviewed local guidance.",
+                "content": document.content,
+                "is_active": "on",
+                "priority": "2",
+                "source_title": "Synthetic guideline",
+                "source_url": "https://example.test/guideline",
+                "source_quote": "Synthetic quote.",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        document.refresh_from_db()
+        self.assertTrue(document.is_active)
+        self.assertEqual(document.ingestion_status, "published")
+
     def test_unsupported_upload_is_rejected(self):
         response = self.client.post(
             reverse("dashboard:knowledge_document_new"),
