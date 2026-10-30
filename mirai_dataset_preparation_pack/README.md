@@ -85,6 +85,7 @@ This command never selects Groq, Gemini, or another external provider. It does n
 - `predictions.jsonl` — extracted entities, original-note evidence/offsets, candidate codes and source identifiers.
 - `operations.jsonl` — per-note status, latency, attempts, provider identity and safe failure codes.
 - `results.jsonl` — atomic checkpoint for resumable execution.
+- `manifest.json` — source CSV/queue SHA-256 and selected record IDs; prevents resuming stale predictions against a changed input file.
 - `report.json` — aggregate counts and explicit evaluation status.
 
 Use `--resume` to continue from the checkpoint after interruption, or `--overwrite` to start the batch outputs again. Do not commit these files because they contain note-linked extraction content.
