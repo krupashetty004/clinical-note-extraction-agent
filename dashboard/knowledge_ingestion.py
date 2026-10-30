@@ -13,22 +13,78 @@ class KnowledgeIngestionError(ValueError):
 
 
 def _extract_image_via_vision_llm(uploaded, suffix: str) -> str | None:
-    """Transcribe an uploaded clinical image using the active vision provider.
+    """Use only the explicitly active, approved Groq vision configuration.
 
-    Performs at most one external request per upload. Provider errors are
-    logged without exposing API keys, image contents, or clinical text.
+    Uploaded images may contain clinical information. No external request is
+    made unless both deployment approval gates are enabled and a tested Groq
+    vision configuration is active. Environment-key and Gemini fallbacks are
+    deliberately not supported here.
     """
     import base64
-    import json
     import logging
-    import os
-    import urllib.error
-    import urllib.request
 
+    from django.conf import settings
     from dashboard.models import AIConfiguration
     from dashboard.utils import increment_credit
 
     logger = logging.getLogger(__name__)
+
+    if not getattr(settings, "GROQ_PROVIDER_ENABLED", False):
+        logger.info("External vision processing is disabled in this environment")
+        return None
+
+    if not getattr(settings, "EXTERNAL_CLINICAL_DATA_APPROVED", False):
+        logger.info("External clinical-data processing has not been approved")
+        return None
+
+    mime_types = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+    }
+    mime_type = mime_types.get(suffix.lower())
+    if mime_type is None:
+        logger.warning("Unsupported image suffix for vision extraction")
+        return None
+
+    try:
+        config = (
+            AIConfiguration.objects.filter(is_active=True)
+            .order_by("-id")
+            .first()
+        )
+    except Exception as exc:
+        logger.warning(
+            "Vision configuration lookup failed (error_type=%s)",
+            type(exc).__name__,
+        )
+        return None
+
+    if config is None or config.provider != "groq":
+        logger.info("No active Groq configuration is available for vision")
+        return None
+
+    # This adapter is intentionally restricted to the configured vision model.
+    # Do not silently substitute a model different from the active configuration.
+    if config.model != "qwen/qwen3.8-27b":
+        logger.info(
+            "Active Groq model does not support this vision path (model=%s)",
+            config.model,
+        )
+        return None
+
+    try:
+        api_key = (config.get_api_key() or "").strip()
+    except Exception as exc:
+        logger.warning(
+            "Saved Groq credential could not be retrieved (error_type=%s)",
+            type(exc).__name__,
+        )
+        return None
+
+    if not api_key:
+        logger.info("Active Groq configuration has no usable credential")
+        return None
 
     try:
         uploaded.seek(0)
@@ -49,67 +105,7 @@ def _extract_image_via_vision_llm(uploaded, suffix: str) -> str | None:
         logger.warning("Clinical image upload was empty")
         return None
 
-    mime_types = {
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-    }
-    mime_type = mime_types.get(suffix.lower())
-
-    if mime_type is None:
-        logger.warning("Unsupported image suffix for vision extraction")
-        return None
-
     image_b64 = base64.b64encode(raw_bytes).decode("ascii")
-
-    # Prefer the provider explicitly activated in the application settings.
-    # Only use environment keys when no saved configuration exists.
-    try:
-        config = (
-            AIConfiguration.objects.filter(is_active=True)
-            .order_by("-id")
-            .first()
-        )
-    except Exception as exc:
-        logger.warning(
-            "Vision configuration lookup failed (error_type=%s)",
-            type(exc).__name__,
-        )
-        return None
-
-    api_key = ""
-    provider = ""
-
-    if config is not None:
-        provider = config.provider
-
-        if provider not in {"groq", "gemini"}:
-            logger.info("Active configuration does not enable vision extraction")
-            return None
-
-        try:
-            api_key = (config.get_api_key() or "").strip()
-        except Exception as exc:
-            logger.warning(
-                "Saved provider key could not be retrieved (error_type=%s)",
-                type(exc).__name__,
-            )
-            return None
-    else:
-        # Environment variables are an explicit alternative when no
-        # database provider configuration has been activated.
-        groq_key = os.environ.get("GROQ_API_KEY", "").strip()
-        gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
-
-        if groq_key:
-            provider, api_key = "groq", groq_key
-        elif gemini_key:
-            provider, api_key = "gemini", gemini_key
-
-    if not api_key:
-        logger.info("No active vision provider key is available")
-        return None
-
     prompt = (
         "Transcribe the visible clinical document exactly as written. "
         "Preserve headings, numbers, measurements, diagnoses, medications, "
@@ -119,119 +115,44 @@ def _extract_image_via_vision_llm(uploaded, suffix: str) -> str | None:
         "text as [unreadable]. Return only the transcription."
     )
 
-    if provider == "groq":
-        try:
-            from groq import Groq
+    try:
+        from groq import Groq
 
-            # One call only; do not retry retired model IDs.
-            client = Groq(api_key=api_key, timeout=30.0)
-
-            increment_credit("groq")
-            response = client.chat.completions.create(
-                model="qwen/qwen3.8-27b",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": prompt,
+        client = Groq(api_key=api_key, timeout=30.0)
+        increment_credit("groq")
+        response = client.chat.completions.create(
+            model=config.model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{mime_type};base64,{image_b64}"
                             },
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": (
-                                        f"data:{mime_type};base64,{image_b64}"
-                                    )
-                                },
-                            },
-                        ],
-                    }
-                ],
-                temperature=0.0,
-            )
+                        },
+                    ],
+                }
+            ],
+            temperature=float(config.temperature),
+            max_completion_tokens=config.max_tokens,
+        )
+        content = response.choices[0].message.content
+        if isinstance(content, str) and content.strip():
+            return content.strip()
 
-            content = response.choices[0].message.content
-            if isinstance(content, str) and content.strip():
-                return content.strip()
+        logger.warning("Groq vision provider returned empty text")
+        return None
 
-            logger.warning("Groq vision provider returned empty text")
-            return None
-
-        except Exception as exc:
-            logger.warning(
-                "Vision request failed (provider=groq, error_type=%s, "
-                "status=%s)",
-                type(exc).__name__,
-                getattr(exc, "status_code", getattr(exc, "code", None)),
-            )
-            return None
-
-    if provider == "gemini":
-        # Use a currently documented Gemini model for image input.
-        # Do not fall back to retired Gemini model IDs.
-        try:
-            url = (
-                "https://generativelanguage.googleapis.com/"
-                "v1beta/models/gemini-3.8-flash:generateContent"
-            )
-            payload = {
-                "contents": [
-                    {
-                        "parts": [
-                            {"text": prompt},
-                            {
-                                "inline_data": {
-                                    "mime_type": mime_type,
-                                    "data": image_b64,
-                                }
-                            },
-                        ]
-                    }
-                ],
-                "generationConfig": {"temperature": 0.0},
-            }
-
-            request = urllib.request.Request(
-                url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={
-                    "Content-Type": "application/json",
-                    "x-goog-api-key": api_key,
-                },
-                method="POST",
-            )
-
-            increment_credit("gemini")
-            with urllib.request.urlopen(request, timeout=30.0) as response:
-                result = json.loads(response.read().decode("utf-8"))
-
-            candidates = result.get("candidates", [])
-            if candidates:
-                parts = candidates[0].get("content", {}).get("parts", [])
-                text = "".join(
-                    part.get("text", "")
-                    for part in parts
-                    if isinstance(part.get("text"), str)
-                ).strip()
-
-                if text:
-                    return text
-
-            logger.warning("Gemini vision provider returned empty text")
-            return None
-
-        except Exception as exc:
-            logger.warning(
-                "Vision request failed (provider=gemini, error_type=%s, "
-                "status=%s)",
-                type(exc).__name__,
-                getattr(exc, "status_code", getattr(exc, "code", None)),
-            )
-            return None
-
-    return None
-
+    except Exception as exc:
+        logger.warning(
+            "Vision request failed (provider=groq, error_type=%s, status=%s)",
+            type(exc).__name__,
+            getattr(exc, "status_code", getattr(exc, "code", None)),
+        )
+        return None
 
 def extract_uploaded_source(uploaded) -> tuple[str, str, str]:
     """Return extracted text, source type, and a safe status message."""
