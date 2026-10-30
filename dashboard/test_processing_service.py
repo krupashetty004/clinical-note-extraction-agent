@@ -3,6 +3,7 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
+from unittest.mock import patch
 
 from dashboard.extraction.processing_service import process_clinical_note
 from dashboard.models import (
@@ -211,7 +212,7 @@ class ProcessingServiceTests(TestCase):
         )
 
     def test_retrieval_failure_does_not_stop_note_processing(self):
-        with __import__("unittest").mock.patch(
+        with patch(
             "dashboard.extraction.processing_service.retrieve_knowledge_passages",
             side_effect=RuntimeError("synthetic internal retrieval error"),
         ):
