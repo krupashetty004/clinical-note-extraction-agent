@@ -108,7 +108,11 @@ To use the built-in synthetic data demo (no real notes needed), set `SYNTHETIC_D
 Go to **Knowledge Base → Upload Document** to add clinical guidelines, protocols, or reference documents (`.txt`, `.pdf`, `.md`, `.wav`, `.mp3`).
 
 - Text and selectable-text PDF ingestion are implemented with limitations documented in the dataset and architecture notes.
-- A local lexical RAG retrieval service exists, but it is not yet connected to the production clinical-processing workflow. Do not assume knowledge-base context is used during note extraction.
+- Local lexical RAG retrieval is connected to the Doctor clinical-note processing workflow. It selects up to three active manually entered or explicitly published passages and passes them separately from the original note to compatible providers.
+- Uploaded documents remain inactive and excluded while `needs_review`; a doctor/administrator must review and publish them before retrieval.
+- Retrieved document/version/chunk citations and scores are persisted with the processing run and shown in its detail page/export.
+- Original-note evidence spans remain mandatory. Reference passages are context only and must never be used as evidence for a diagnosis or other extracted claim.
+- The current RAG implementation is lexical; it does not yet use embeddings or pgvector. The deterministic local rules provider ignores the context, while the Groq adapter receives it separately.
 
 ---
 
