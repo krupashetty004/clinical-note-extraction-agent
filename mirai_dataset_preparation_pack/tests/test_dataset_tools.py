@@ -48,6 +48,7 @@ class AnalyzerTests(unittest.TestCase):
                 tmp_path / "annotations",
                 tmp_path / "reports",
                 annotation_limit=3,
+                minimum_specialties=3,
             )
             self.assertEqual(report["source_rows_loaded"], 5)
             self.assertEqual(report["rows_with_nonempty_transcription"], 4)
