@@ -49,6 +49,8 @@ class GroqProviderTests(SimpleTestCase):
         provider = GroqExtractionProvider(
             api_key="synthetic-config-key",
             model="configured-model",
+            temperature=0.35,
+            max_completion_tokens=768,
         )
         provider.extract("Synthetic provider configuration test.")
 
@@ -58,6 +60,9 @@ class GroqProviderTests(SimpleTestCase):
             client.chat.completions.create.call_args.kwargs["model"],
             "configured-model",
         )
+        request_kwargs = client.chat.completions.create.call_args.kwargs
+        self.assertEqual(request_kwargs["temperature"], 0.35)
+        self.assertEqual(request_kwargs["max_completion_tokens"], 768)
 
     def test_extraction_provider_returns_json_object_and_uses_no_sdk_retries(self):
         client = fake_client(json.dumps(EMPTY_EXTRACTION))
