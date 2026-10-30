@@ -272,7 +272,7 @@ class DatasetBatchTests(SimpleTestCase):
         mock_run.assert_not_called()
 
     def test_requires_existing_outputs_for_resume(self):
-        with self.assertRaisesRegex(DatasetBatchError, "requires the atomic results.jsonl checkpoint"):
+        with self.assertRaisesRegex(DatasetBatchError, "requires both manifest.json and the atomic results.jsonl checkpoint"):
             run_dataset_batch(
                 input_path=self.input_path,
                 output_dir=self.output_dir,
