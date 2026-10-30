@@ -107,7 +107,9 @@ To use the built-in synthetic data demo (no real notes needed), set `MIRAI_ENABL
 
 Go to **Knowledge Base → Upload Document** to add clinical guidelines, protocols, or reference documents (`.txt`, `.pdf`, `.md`, `.wav`, `.mp3`).
 
-- Text and selectable-text PDF ingestion are implemented with limitations documented in the dataset and architecture notes.
+- Text and selectable-text PDF ingestion are implemented. Scanned-PDF OCR is not yet implemented.
+- Image uploads try local Tesseract OCR first. External Groq vision transcription is blocked unless the separate clinical-data approval gate is enabled and the active tested Groq model is the configured vision-capable model. There is no environment-key or Gemini fallback.
+- Audio uploads currently create a review placeholder; they are not transcribed with a speech-to-text model. Do not publish placeholder content as clinical reference material.
 - Local lexical RAG retrieval is connected to the Doctor clinical-note processing workflow. It selects up to three active manually entered or explicitly published passages and passes them separately from the original note to compatible providers.
 - Uploaded documents remain inactive and excluded while `needs_review`; a doctor/administrator must review and publish them before retrieval.
 - Retrieved document/version/chunk citations and scores are persisted with the processing run and shown in its detail page/export.
