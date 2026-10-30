@@ -419,6 +419,96 @@ class KnowledgeBaseTests(TestCase):
         self.assertEqual(configuration.tested_fingerprint, "")
         self.assertFalse(AIConfiguration.objects.filter(is_active=True).exists())
 
+
+    def test_authorized_user_can_download_private_source_file(self):
+        from django.core.files.base import ContentFile
+        from django.core.files.storage import default_storage
+
+        document = KnowledgeDocument.objects.create(
+            title="Synthetic source download",
+            content="Synthetic source review content.",
+            created_by=self.admin,
+        )
+        document.source_file.save(
+            "synthetic-source.txt",
+            ContentFile(b"synthetic source file only"),
+            save=False,
+        )
+        document.source_filename = "synthetic-source.txt"
+        document.save()
+        self.addCleanup(default_storage.delete, document.source_file.name)
+
+        response = self.client.get(
+            reverse(
+                "dashboard:knowledge_document_source_download",
+                kwargs={"doc_id": document.pk},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("attachment", response["Content-Disposition"])
+        self.assertIn("synthetic-source.txt", response["Content-Disposition"])
+        content = b"".join(response.streaming_content)
+        response.close()
+        self.assertEqual(content, b"synthetic source file only")
+
+    def test_anonymous_user_cannot_download_private_source_file(self):
+        from django.core.files.base import ContentFile
+        from django.core.files.storage import default_storage
+
+        document = KnowledgeDocument.objects.create(
+            title="Synthetic protected source",
+            content="Synthetic source content.",
+            created_by=self.admin,
+        )
+        document.source_file.save(
+            "protected-source.txt",
+            ContentFile(b"synthetic protected source"),
+            save=False,
+        )
+        document.source_filename = "protected-source.txt"
+        document.save()
+        self.addCleanup(default_storage.delete, document.source_file.name)
+
+        self.client.logout()
+        response = self.client.get(
+            reverse(
+                "dashboard:knowledge_document_source_download",
+                kwargs={"doc_id": document.pk},
+            )
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response.url)
+
+    @override_settings(
+        DEBUG=False,
+        SECURE_SSL_REDIRECT=False,
+        NEON_OBJECT_STORAGE_ENABLED=False,
+    )
+    def test_production_rejects_source_upload_when_persistent_storage_is_disabled(self):
+        response = self.client.post(
+            reverse("dashboard:knowledge_document_new"),
+            {
+                "title": "Synthetic blocked upload",
+                "summary": "Synthetic only",
+                "source_file": SimpleUploadedFile(
+                    "synthetic.txt",
+                    b"Synthetic note text for storage test.",
+                    content_type="text/plain",
+                ),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "File uploads are disabled in production until private persistent object storage is configured.",
+        )
+        self.assertFalse(
+            KnowledgeDocument.objects.filter(title="Synthetic blocked upload").exists()
+        )
+
     def test_ai_settings_does_not_activate_live_provider_without_local_test(self):
         response = self.client.post(
             reverse("dashboard:settings"),
@@ -436,3 +526,93 @@ class KnowledgeBaseTests(TestCase):
         self.assertEqual(configuration.last_test_status, "blocked")
         self.assertFalse(configuration.is_active)
         self.assertContains(response, "Live provider testing is disabled")
+
+
+    def test_authorized_user_can_download_private_source_file(self):
+        from django.core.files.base import ContentFile
+        from django.core.files.storage import default_storage
+
+        document = KnowledgeDocument.objects.create(
+            title="Synthetic source download",
+            content="Synthetic source review content.",
+            created_by=self.admin,
+        )
+        document.source_file.save(
+            "synthetic-source.txt",
+            ContentFile(b"synthetic source file only"),
+            save=False,
+        )
+        document.source_filename = "synthetic-source.txt"
+        document.save()
+        self.addCleanup(default_storage.delete, document.source_file.name)
+
+        response = self.client.get(
+            reverse(
+                "dashboard:knowledge_document_source_download",
+                kwargs={"doc_id": document.pk},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("attachment", response["Content-Disposition"])
+        self.assertIn("synthetic-source.txt", response["Content-Disposition"])
+        content = b"".join(response.streaming_content)
+        response.close()
+        self.assertEqual(content, b"synthetic source file only")
+
+    def test_anonymous_user_cannot_download_private_source_file(self):
+        from django.core.files.base import ContentFile
+        from django.core.files.storage import default_storage
+
+        document = KnowledgeDocument.objects.create(
+            title="Synthetic protected source",
+            content="Synthetic source content.",
+            created_by=self.admin,
+        )
+        document.source_file.save(
+            "protected-source.txt",
+            ContentFile(b"synthetic protected source"),
+            save=False,
+        )
+        document.source_filename = "protected-source.txt"
+        document.save()
+        self.addCleanup(default_storage.delete, document.source_file.name)
+
+        self.client.logout()
+        response = self.client.get(
+            reverse(
+                "dashboard:knowledge_document_source_download",
+                kwargs={"doc_id": document.pk},
+            )
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response.url)
+
+    @override_settings(
+        DEBUG=False,
+        SECURE_SSL_REDIRECT=False,
+        NEON_OBJECT_STORAGE_ENABLED=False,
+    )
+    def test_production_rejects_source_upload_when_persistent_storage_is_disabled(self):
+        response = self.client.post(
+            reverse("dashboard:knowledge_document_new"),
+            {
+                "title": "Synthetic blocked upload",
+                "summary": "Synthetic only",
+                "source_file": SimpleUploadedFile(
+                    "synthetic.txt",
+                    b"Synthetic note text for storage test.",
+                    content_type="text/plain",
+                ),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "File uploads are disabled in production until private persistent object storage is configured.",
+        )
+        self.assertFalse(
+            KnowledgeDocument.objects.filter(title="Synthetic blocked upload").exists()
+        )
