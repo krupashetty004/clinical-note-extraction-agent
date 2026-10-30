@@ -342,9 +342,7 @@ def run_dataset_batch(
             predictions.append(prediction)
             operations.append(operation)
         completed_ids = {row["case_id"] for row in checkpoints}
-        if completed_ids != {
-            row["case_id"] for row in checkpoints
-        } or not completed_ids.issubset(set(prior_ids)):
+        if not completed_ids.issubset(set(prior_ids)):
             raise DatasetBatchError(
                 "The checkpoint does not match the batch manifest."
             )
