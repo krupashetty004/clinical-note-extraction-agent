@@ -238,7 +238,8 @@ def report_markdown(report: dict[str, Any]) -> str:
         lines.append(f"- `{key}`: {value:,}")
     lines.extend(["", "## Specialty distribution", "", "| Specialty | Records |", "|---|---:|"])
     for specialty, count in specialties.items():
-        lines.append(f"| {specialty.replace('|', '\\|')} | {count:,} |")
+        escaped_specialty = specialty.replace('|', '\\|')
+        lines.append(f"| {escaped_specialty} | {count:,} |")
     lengths = report["text_length_characters"]
     lines.extend([
         "", "## Note-text length (characters)", "",

@@ -86,6 +86,12 @@ class AnnotationValidatorTests(unittest.TestCase):
             "adjudication_status": "adjudicated",
             "conflict_status": "not_applicable",
             "conflict_notes": "No conflicting annotations identified.",
+            "label_source": "human_annotated",
+            "label_provenance": {
+                "dataset_version": "1.0",
+                "annotation_guidelines": "v1.0",
+                "license_or_dua": "synthetic-open",
+            },
             "gold_annotations": {
                 "diagnoses": [{"entity": "hypertension", "status": "active", "evidence_text": "hypertension", "start_offset": start, "end_offset": start + len("hypertension")}],
                 "procedures": [], "medications": [], "allergies": [], "vital_signs": [], "icd10_cm_codes": [],

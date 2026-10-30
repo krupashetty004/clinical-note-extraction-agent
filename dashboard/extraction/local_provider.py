@@ -9,7 +9,10 @@ import re
 from typing import Any
 
 from dashboard.extraction.diagnosis_coding import DiagnosisCodingBatch
-from dashboard.extraction.schema import ExtractionResult
+from dashboard.extraction.schema import (
+    ExtractionResult,
+    validate_item_status_context,
+)
 
 TOKEN_PATTERN = re.compile(r"[^\W_]+", re.UNICODE)
 
@@ -393,35 +396,40 @@ class LocalClinicalVerificationProvider:
 
             # Determine status_check for diagnoses and medications
             if status_applies:
-                status_check = "correct"
-                # Check for contextual contradictions in a short window before the span
-                window = original_note[max(0, start - 60): start].lower()
-                if item.category == "diagnosis":
-                    if item.status == "active" and any(
-                        w in window
-                        for w in ["no evidence of", "ruled out", "negative for", "denies", "not"]
-                    ):
-                        status_check = "uncertain"
-                        review_reasons.append(f"Item #{index} active status may conflict with negation context.")
-                    elif item.status == "historical" and any(
-                        w in window for w in ["history of", "hx of", "past", "prior"]
-                    ):
-                        status_check = "correct"
-                    elif item.status == "ruled_out" and not any(
-                        w in window
-                        for w in ["no evidence of", "ruled out", "negative for", "denies", "not"]
-                    ):
-                        status_check = "uncertain"
-                    elif item.status == "suspected" and not any(
-                        w in window
-                        for w in ["possible", "probable", "suspected", "question of", "rule out"]
-                    ):
-                        status_check = "uncertain"
-                elif item.category == "medication":
-                    if item.status == "discontinued" and not any(
-                        w in window for w in ["discontinued", "stopped", "off", "d/c"]
-                    ):
-                        status_check = "uncertain"
+                status_ctx_err = validate_item_status_context(item, original_note)
+                if status_ctx_err is not None:
+                    status_check = "incorrect"
+                    review_reasons.append(f"Item #{index} status context conflict: {status_ctx_err}")
+                else:
+                    status_check = "correct"
+                    # Check for contextual contradictions in a short window before the span
+                    window = original_note[max(0, start - 60): start].lower()
+                    if item.category == "diagnosis":
+                        if item.status == "active" and any(
+                            w in window
+                            for w in ["no evidence of", "ruled out", "negative for", "denies", "not"]
+                        ):
+                            status_check = "uncertain"
+                            review_reasons.append(f"Item #{index} active status may conflict with negation context.")
+                        elif item.status == "historical" and any(
+                            w in window for w in ["history of", "hx of", "past", "prior"]
+                        ):
+                            status_check = "correct"
+                        elif item.status == "ruled_out" and not any(
+                            w in window
+                            for w in ["no evidence of", "ruled out", "negative for", "denies", "not"]
+                        ):
+                            status_check = "uncertain"
+                        elif item.status == "suspected" and not any(
+                            w in window
+                            for w in ["possible", "probable", "suspected", "question of", "rule out"]
+                        ):
+                            status_check = "uncertain"
+                    elif item.category == "medication":
+                        if item.status == "discontinued" and not any(
+                            w in window for w in ["discontinued", "stopped", "off", "d/c"]
+                        ):
+                            status_check = "uncertain"
             else:
                 status_check = "not_applicable"
 

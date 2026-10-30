@@ -77,6 +77,7 @@ flowchart TD
     REVIEW --> JSON
 ```
 
+**Storage note:** Neon is the proposed PostgreSQL provider and supports pgvector. Neon Object Storage is the preferred file-storage choice because the current official documentation marks it generally available, S3-compatible, and included at 5 GB per project on the Free plan. Private access controls and Python/S3 compatibility still require an implementation smoke test. If it fails the acceptance checklist, evaluate Supabase Storage Free as a fallback without changing the Neon database decision. Reconfirm allowances before deployment.
 
 ## 4. Data Sources Must Stay Distinct
 

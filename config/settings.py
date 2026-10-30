@@ -27,18 +27,22 @@ if not SECRET_KEY:
     )
 
 
-ALLOWED_HOSTS = [
-    host.strip()
-    for host in os.environ.get(
-        "DJANGO_ALLOWED_HOSTS",
-        "127.0.0.1,localhost",
-    ).split(",")
-    if host.strip()
-]
-
 RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip()
-if RENDER_EXTERNAL_HOSTNAME and RENDER_EXTERNAL_HOSTNAME not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+
+if DEBUG:
+    ALLOWED_HOSTS = ["*"]
+else:
+    ALLOWED_HOSTS = [
+        host.strip()
+        for host in os.environ.get(
+            "DJANGO_ALLOWED_HOSTS",
+            "127.0.0.1,localhost",
+        ).split(",")
+        if host.strip()
+    ]
+
+    if RENDER_EXTERNAL_HOSTNAME and RENDER_EXTERNAL_HOSTNAME not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
 
 INSTALLED_APPS = [
@@ -191,13 +195,16 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = False
 SECURE_HSTS_PRELOAD = False
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "same-origin"
-X_FRAME_OPTIONS = "DENY"
+X_FRAME_OPTIONS = "SAMEORIGIN" if DEBUG else "DENY"
 
 CSRF_TRUSTED_ORIGINS = [
     origin.strip()
     for origin in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
     if origin.strip()
 ]
+app_url = os.environ.get("APP_URL", "").strip()
+if app_url and app_url not in CSRF_TRUSTED_ORIGINS:
+    CSRF_TRUSTED_ORIGINS.append(app_url)
 if RENDER_EXTERNAL_HOSTNAME:
     render_origin = f"https://{RENDER_EXTERNAL_HOSTNAME}"
     if render_origin not in CSRF_TRUSTED_ORIGINS:

@@ -317,8 +317,90 @@ class LocalAnnotationInterfaceTests(TestCase):
         content = response.content.decode("utf-8")
         self.assertIn(f'"record_id": "{note_id}"', content)
 
+    def _setup_mtsamples_records(self):
+        records = [
+            {
+                "record_id": "mtsamples-01488-56a93dbe88bfa068",
+                "specialty": "Orthopedic",
+                "note_text": "Patient with left foot pain and swelling noted.",
+                "source_dataset": "synthetic:mirai-test",
+                "source_url": "https://example.invalid/mirai-synthetic-dataset",
+                "source_row_number": 1,
+                "source_keywords": "swelling",
+                "annotation_complete": True,
+                "adjudication_status": "adjudicated",
+                "conflict_status": "not_applicable",
+                "conflict_notes": "",
+                "reviewer_decision": "accepted",
+                "reviewer_comment": "Approved",
+                "gold_annotations": {
+                    "diagnoses": [],
+                    "procedures": [],
+                    "medications": [],
+                    "allergies": [],
+                    "vital_signs": [],
+                    "icd10_cm_codes": [],
+                },
+            },
+            {
+                "record_id": "mtsamples-00176-9fefeb9804915464",
+                "specialty": "Podiatry",
+                "note_text": "Degenerative joint disease and bunionectomy evaluation.",
+                "source_dataset": "synthetic:mirai-test",
+                "source_url": "https://example.invalid/mirai-synthetic-dataset",
+                "source_row_number": 2,
+                "source_keywords": "joint disease",
+                "annotation_complete": True,
+                "adjudication_status": "adjudicated",
+                "conflict_status": "not_applicable",
+                "conflict_notes": "",
+                "reviewer_decision": "accepted",
+                "reviewer_comment": "Approved",
+                "gold_annotations": {
+                    "diagnoses": [],
+                    "procedures": [],
+                    "medications": [],
+                    "allergies": [],
+                    "vital_signs": [],
+                    "icd10_cm_codes": [],
+                },
+            },
+            {
+                "record_id": "mtsamples-03094-ab40536e8afb16bc",
+                "specialty": "General Medicine",
+                "note_text": "Follow up visit for hypertension and routine assessment.",
+                "source_dataset": "synthetic:mirai-test",
+                "source_url": "https://example.invalid/mirai-synthetic-dataset",
+                "source_row_number": 3,
+                "source_keywords": "hypertension",
+                "annotation_complete": True,
+                "adjudication_status": "adjudicated",
+                "conflict_status": "not_applicable",
+                "conflict_notes": "",
+                "reviewer_decision": "accepted",
+                "reviewer_comment": "Approved",
+                "gold_annotations": {
+                    "diagnoses": [],
+                    "procedures": [],
+                    "medications": [],
+                    "allergies": [],
+                    "vital_signs": [],
+                    "icd10_cm_codes": [],
+                },
+            },
+        ]
+        self.template_path.write_text(
+            "".join(json.dumps(r) + "\n" for r in records),
+            encoding="utf-8",
+        )
+        if self.working_path.exists():
+            self.working_path.unlink()
+        self.client.session.clear()
+        self.client.session.save()
+
     def test_dropdown_options_present_on_different_records(self):
         """Dropdown options are present on annotation pages for different records."""
+        self._setup_mtsamples_records()
         sample_ids = [
             "mtsamples-01488-56a93dbe88bfa068",
             "mtsamples-00176-9fefeb9804915464",
@@ -346,6 +428,7 @@ class LocalAnnotationInterfaceTests(TestCase):
 
     def test_intended_dropdowns_have_expected_choices(self):
         """Each intended dropdown has its expected choices and displays saved initial value."""
+        self._setup_mtsamples_records()
         response = self.client.get(
             reverse("dashboard:annotation_detail", kwargs={"record_id": "mtsamples-01488-56a93dbe88bfa068"})
         )
@@ -371,6 +454,7 @@ class LocalAnnotationInterfaceTests(TestCase):
 
     def test_valid_dropdown_selection_submits_and_persists_after_reload(self):
         """A valid selection can be submitted and persists after reload."""
+        self._setup_mtsamples_records()
         record_id = "mtsamples-01488-56a93dbe88bfa068"
         get_resp = self.client.get(
             reverse("dashboard:annotation_detail", kwargs={"record_id": record_id})
@@ -419,6 +503,7 @@ class LocalAnnotationInterfaceTests(TestCase):
 
     def test_invalid_dropdown_selection_is_rejected(self):
         """Invalid dropdown selections are rejected with validation errors."""
+        self._setup_mtsamples_records()
         record_id = "mtsamples-01488-56a93dbe88bfa068"
         get_resp = self.client.get(
             reverse("dashboard:annotation_detail", kwargs={"record_id": record_id})

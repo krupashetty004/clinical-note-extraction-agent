@@ -1,0 +1,6 @@
+{
+  "name": "Mirai Clinical Note Extraction & Coding Agent",
+  "description": "Clinical note extraction, ICD-10 coding, and verification agent with doctor workspace",
+  "permissions": [],
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

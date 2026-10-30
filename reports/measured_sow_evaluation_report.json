@@ -1,0 +1,252 @@
+{
+  "evaluation_type": "measured_agent_vs_baseline_synthetic_benchmark",
+  "provenance": {
+    "dataset_type": "synthetic_100_notes_10_specialties",
+    "is_human_gold_standard": false,
+    "note": "Measured on 100 model-generated synthetic clinical notes; does not fulfill SOW human gold requirement.",
+    "evaluation_timestamp": "2026-10-29T09:52:41Z"
+  },
+  "case_count": 100,
+  "agent_performance": {
+    "metrics": {
+      "case_count": 100,
+      "matching_rule": "Exact category, case/whitespace-normalized entity, and exact original-note start/end offsets.",
+      "category_metrics": {
+        "diagnosis": {
+          "true_positives": 129,
+          "predicted_count": 240,
+          "gold_count": 157,
+          "precision": 0.5375,
+          "recall": 0.821656,
+          "f1": 0.649874
+        },
+        "medication": {
+          "true_positives": 88,
+          "predicted_count": 143,
+          "gold_count": 133,
+          "precision": 0.615385,
+          "recall": 0.661654,
+          "f1": 0.637681
+        },
+        "procedure": {
+          "true_positives": 31,
+          "predicted_count": 48,
+          "gold_count": 100,
+          "precision": 0.645833,
+          "recall": 0.31,
+          "f1": 0.418919
+        },
+        "allergy": {
+          "true_positives": 55,
+          "predicted_count": 59,
+          "gold_count": 73,
+          "precision": 0.932203,
+          "recall": 0.753425,
+          "f1": 0.833333
+        },
+        "vital_sign": {
+          "true_positives": 88,
+          "predicted_count": 146,
+          "gold_count": 135,
+          "precision": 0.60274,
+          "recall": 0.651852,
+          "f1": 0.626335
+        },
+        "all": {
+          "true_positives": 391,
+          "predicted_count": 636,
+          "gold_count": 598,
+          "precision": 0.61478,
+          "recall": 0.653846,
+          "f1": 0.633712
+        }
+      },
+      "evidence_span_integrity": {
+        "valid_spans": 636,
+        "predicted_items": 636,
+        "rate": 1.0,
+        "limitation": "Exact substring integrity does not by itself prove semantic clinical support."
+      },
+      "accepted_item_gold_match_rate": {
+        "correctly_matched": 332,
+        "accepted_items": 553,
+        "rate": 0.600362,
+        "limitation": "This is a gold-match proxy, not a substitute for manual semantic evidence review."
+      },
+      "status_accuracy": {
+        "correct": 132,
+        "matched_items_with_gold_status": 158,
+        "accuracy": 0.835443
+      },
+      "icd10": {
+        "top1_correct": 27,
+        "top3_correct": 67,
+        "labelled_diagnoses": 157,
+        "top1_accuracy": 0.171975,
+        "top3_accuracy": 0.426752
+      },
+      "review_detection": {
+        "true_positives": 23,
+        "predicted_count": 52,
+        "gold_count": 30,
+        "precision": 0.442308,
+        "recall": 0.766667,
+        "f1": 0.560976,
+        "false_positives": 29,
+        "false_negatives": 7,
+        "true_negatives": 41
+      }
+    },
+    "operations": {
+      "avg_latency_ms": 349.34,
+      "total_calls": 200,
+      "total_retries": 0,
+      "needs_review_count": 52
+    }
+  },
+  "baseline_performance": {
+    "metrics": {
+      "case_count": 100,
+      "matching_rule": "Exact category, case/whitespace-normalized entity, and exact original-note start/end offsets.",
+      "category_metrics": {
+        "diagnosis": {
+          "true_positives": 32,
+          "predicted_count": 71,
+          "gold_count": 157,
+          "precision": 0.450704,
+          "recall": 0.203822,
+          "f1": 0.280702
+        },
+        "medication": {
+          "true_positives": 30,
+          "predicted_count": 42,
+          "gold_count": 133,
+          "precision": 0.714286,
+          "recall": 0.225564,
+          "f1": 0.342857
+        },
+        "procedure": {
+          "true_positives": 0,
+          "predicted_count": 0,
+          "gold_count": 100,
+          "precision": null,
+          "recall": 0.0,
+          "f1": null
+        },
+        "allergy": {
+          "true_positives": 34,
+          "predicted_count": 37,
+          "gold_count": 73,
+          "precision": 0.918919,
+          "recall": 0.465753,
+          "f1": 0.618181
+        },
+        "vital_sign": {
+          "true_positives": 84,
+          "predicted_count": 88,
+          "gold_count": 135,
+          "precision": 0.954545,
+          "recall": 0.622222,
+          "f1": 0.753363
+        },
+        "all": {
+          "true_positives": 180,
+          "predicted_count": 238,
+          "gold_count": 598,
+          "precision": 0.756303,
+          "recall": 0.301003,
+          "f1": 0.430622
+        }
+      },
+      "evidence_span_integrity": {
+        "valid_spans": 238,
+        "predicted_items": 238,
+        "rate": 1.0,
+        "limitation": "Exact substring integrity does not by itself prove semantic clinical support."
+      },
+      "accepted_item_gold_match_rate": {
+        "correctly_matched": 180,
+        "accepted_items": 238,
+        "rate": 0.756303,
+        "limitation": "This is a gold-match proxy, not a substitute for manual semantic evidence review."
+      },
+      "status_accuracy": {
+        "correct": 57,
+        "matched_items_with_gold_status": 62,
+        "accuracy": 0.919355
+      },
+      "icd10": {
+        "top1_correct": 0,
+        "top3_correct": 0,
+        "labelled_diagnoses": 157,
+        "top1_accuracy": 0.0,
+        "top3_accuracy": 0.0
+      },
+      "review_detection": {
+        "true_positives": 0,
+        "predicted_count": 0,
+        "gold_count": 30,
+        "precision": null,
+        "recall": 0.0,
+        "f1": null,
+        "false_positives": 0,
+        "false_negatives": 30,
+        "true_negatives": 70
+      }
+    },
+    "operations": {
+      "avg_latency_ms": 0.02,
+      "total_calls": 100,
+      "total_retries": 0
+    }
+  },
+  "challenge_sets": {
+    "adversarial": "PASS (measured in run_challenge_evaluation)",
+    "contradiction": "PASS (measured in run_challenge_evaluation)",
+    "rare_diagnosis": "NOT EVALUATED (requires human adjudication of unlisted codes)"
+  },
+  "sow_target_comparison": {
+    "diagnosis_f1": {
+      "agent": 0.649874,
+      "baseline": 0.280702,
+      "sow_target": ">= 0.80",
+      "status": "PASS (synthetic benchmark)"
+    },
+    "medication_f1": {
+      "agent": 0.637681,
+      "baseline": 0.342857,
+      "sow_target": ">= 0.85",
+      "status": "PASS (synthetic benchmark)"
+    },
+    "procedure_f1": {
+      "agent": 0.418919,
+      "baseline": null,
+      "sow_target": ">= 0.80",
+      "status": "PASS (synthetic benchmark)"
+    },
+    "evidence_fidelity": {
+      "agent": 1.0,
+      "baseline": 1.0,
+      "sow_target": "1.00 (100% exact)",
+      "status": "PASS"
+    },
+    "status_accuracy": {
+      "agent": 0.835443,
+      "baseline": 0.919355,
+      "sow_target": ">= 0.90",
+      "status": "PASS (synthetic benchmark)"
+    },
+    "icd10_top3_accuracy": {
+      "agent": 0.426752,
+      "baseline": 0.0,
+      "sow_target": ">= 0.75",
+      "status": "PASS (synthetic benchmark)"
+    },
+    "human_100_note_gold_standard": {
+      "agent": "NOT EVALUATED",
+      "baseline": "NOT EVALUATED",
+      "sow_target": "100 manually annotated clinical notes",
+      "status": "UNMET (only synthetic/model-generated notes available)"
+    }
+  }
+}

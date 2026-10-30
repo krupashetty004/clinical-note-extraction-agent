@@ -194,24 +194,45 @@ def qualification_errors(
         errors.append(prefix + "record requires reviewed conflict status")
     if not isinstance(record.get("conflict_notes"), str) or not record["conflict_notes"].strip():
         errors.append(prefix + "record requires conflict review notes")
-    if record.get("label_source") not in {
-        "human_annotated",
-        "external_gold_standard",
-    }:
+    label_source = record.get("label_source")
+    if label_source in {"human_annotated", "external_gold_standard"}:
+        if record.get("adjudication_status") != "adjudicated":
+            errors.append(prefix + "record requires adjudication_status='adjudicated'")
+        if not isinstance(record.get("adjudicator_id"), str) or not record["adjudicator_id"].strip():
+            errors.append(prefix + "record requires a pseudonymous adjudicator_id")
+        if record.get("adjudicator_id") == record.get("annotator_id"):
+            errors.append(prefix + "adjudicator_id must differ from annotator_id")
+        if not isinstance(record.get("adjudication_notes"), str) or not record["adjudication_notes"].strip():
+            errors.append(prefix + "record requires adjudication_notes")
+        qualification = record.get("annotator_qualification")
+        if not isinstance(qualification, dict) or qualification.get("qualified") is not True:
+            errors.append(prefix + "record requires qualified annotator evidence")
+        provenance = record.get("label_provenance")
+        if not isinstance(provenance, dict) or not all(
+            isinstance(provenance.get(field), str) and provenance[field].strip()
+            for field in ("dataset_version", "annotation_guidelines", "license_or_dua")
+        ):
+            errors.append(
+                prefix
+                + "record requires label_provenance with dataset_version, "
+                "annotation_guidelines, and license_or_dua"
+            )
+    elif label_source == "model_generated_gold":
+        provenance = record.get("label_provenance")
+        if not isinstance(provenance, dict) or not all(
+            isinstance(provenance.get(field), str) and provenance[field].strip()
+            for field in ("model_or_provider", "generation_timestamp", "annotation_guidelines")
+        ):
+            errors.append(
+                prefix
+                + "model_generated_gold requires label_provenance with model_or_provider, "
+                "generation_timestamp, and annotation_guidelines"
+            )
+    else:
         errors.append(
             prefix
-            + "record requires label_source='human_annotated' or "
-            "'external_gold_standard'; AI-generated labels are not clinical gold"
-        )
-    provenance = record.get("label_provenance")
-    if not isinstance(provenance, dict) or not all(
-        isinstance(provenance.get(field), str) and provenance[field].strip()
-        for field in ("dataset_version", "annotation_guidelines", "license_or_dua")
-    ):
-        errors.append(
-            prefix
-            + "record requires label_provenance with dataset_version, "
-            "annotation_guidelines, and license_or_dua"
+            + "record requires label_source='human_annotated', 'external_gold_standard', or "
+            "'model_generated_gold'"
         )
     return errors
 
@@ -234,7 +255,11 @@ def evaluation_ready_records(
             errors.extend(record_errors)
         else:
             exported = dict(record)
-            exported["clinical_performance_eligible"] = True
+            if record.get("label_source") == "model_generated_gold":
+                exported["clinical_performance_eligible"] = False
+                exported["synthetic_benchmark_eligible"] = True
+            else:
+                exported["clinical_performance_eligible"] = True
             ready.append(exported)
     return ready, errors
 
@@ -276,7 +301,8 @@ def evaluation_cases_from_records(
                 "note": record["note_text"],
                 "gold_items": items,
                 "expected_needs_review": expected_review,
-                "gold_qualified": True,
+                "gold_qualified": record.get("label_source") != "model_generated_gold",
+                "label_source": record.get("label_source", "unknown"),
                 "source_dataset": record["source_dataset"],
                 "source_row_number": record["source_row_number"],
             }
