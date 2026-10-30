@@ -5,6 +5,7 @@ from django.contrib.auth.models import Group
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from unittest.mock import patch
 
 from dashboard.models import (
     ClinicalNote,
@@ -126,6 +127,32 @@ class AIProcessingViewTests(TestCase):
             any("metformin" in e for e in entities),
             f"Expected 'metformin' in extracted entities; got: {entities}",
         )
+
+    @override_settings(
+        GROQ_PROVIDER_ENABLED=True,
+        EXTERNAL_CLINICAL_DATA_APPROVED=False,
+    )
+    @patch("dashboard.extraction.groq_provider.GroqExtractionProvider")
+    @patch("dashboard.extraction.groq_provider.GroqVerificationProvider")
+    def test_groq_synthetic_flag_does_not_send_doctor_notes_externally(
+        self,
+        mock_groq_verifier,
+        mock_groq_extractor,
+    ):
+        """External provider use remains blocked without explicit data approval."""
+        with patch.dict("os.environ", {"GROQ_API_KEY": "synthetic-test-key"}):
+            response = self.client.post(
+                reverse("dashboard:run_ai_processing", kwargs={"note_id": self.note.pk}),
+            )
+
+        self.assertEqual(response.status_code, 302)
+        mock_groq_extractor.assert_not_called()
+        mock_groq_verifier.assert_not_called()
+        run = ClinicalProcessingRun.objects.filter(
+            clinical_note=self.note,
+        ).latest("created_at")
+        entities = [item["entity"].lower() for item in run.extraction_result["items"]]
+        self.assertTrue(any("hypertension" in entity for entity in entities))
 
     # ------------------------------------------------------------------
     # Access control
