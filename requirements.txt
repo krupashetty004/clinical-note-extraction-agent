@@ -9,5 +9,5 @@ groq==1.7.0
 cryptography==46.0.3
 pypdf==6.8.0
 pytesseract==0.3.13
-Pillow==13.0.0
+Pillow==12.3.0
 pypdfium2==5.14.0
