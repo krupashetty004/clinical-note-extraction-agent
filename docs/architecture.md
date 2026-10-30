@@ -240,4 +240,19 @@ Before a real deployment:
 
 ---
 
+## 10. Implementation Snapshot — 30 October 2026
+
+The current feature-branch implementation has connected a first lexical RAG path to the Doctor note-processing service. This snapshot describes the code that exists now; it does not mark the full proposed architecture above as complete.
+
+- The service builds a bounded keyword query from the original note and retrieves up to three passages from active knowledge documents whose ingestion status is `manual` or `published`.
+- Uploaded documents start inactive and `needs_review`. They are excluded from retrieval until explicitly activated/published through the knowledge-document review page.
+- Retrieval passes reference passages separately from `original_note` to compatible providers. Provider instructions explicitly prohibit using a reference passage as evidence for a clinical claim.
+- Extraction and verification evidence spans are still validated against the original note only. The processing run records retrieved document IDs, titles, versions, citations, chunk indexes, source offsets, scores, and retrieval status; it does not duplicate the full reference passage text into the trace.
+- The processing-run page and JSON export expose this reference trace.
+- Retrieval is currently lexical and query-term based. Knowledge-document embeddings, pgvector/vector search, reranking, and evaluation of retrieval relevance are **not yet implemented**.
+- The offline MTSamples batch command remains a separate local benchmark path. It uses deterministic local extraction/verification and does not currently include RAG.
+- The deterministic local extraction provider accepts the context contract but does not use references to generate additional findings. The Groq adapter accepts references as separate context, but Doctor-note external use remains disabled unless `MIRAI_EXTERNAL_CLINICAL_DATA_APPROVED=1` is explicitly set after the required privacy/security approval, in addition to the existing provider opt-in and key.
+
+These limitations must remain visible in project reporting. A passing CI suite validates automated code contracts; it does not establish retrieval quality, clinical accuracy, or deployment approval.
+
 **Status:** Proposed revised architecture. It is not evidence of implementation or formal scope/provider approval.
