@@ -206,6 +206,22 @@ def _reconcile(
             )
             continue
 
+        # Suspected diagnoses remain provisional even when their mention
+        # and candidate code are source-grounded. They must not be accepted
+        # as confirmed without human review.
+        if item.category == "diagnosis" and item.status == "suspected":
+            dispositions.append(
+                ItemDisposition(
+                    item_index=index,
+                    decision="needs_review",
+                    reasons=(
+                        "The diagnosis is documented as suspected; "
+                        "human confirmation is required before acceptance.",
+                    ),
+                )
+            )
+            continue
+
         # A diagnosis with no reliable code candidate is not silently
         # considered fully resolved.
         if item.category == "diagnosis":
