@@ -51,6 +51,16 @@ class SyntheticDatasetIntegrityTests(unittest.TestCase):
             self.assertFalse(row["label_provenance"]["is_human_gold"])
             self.assertTrue(prohibited_fields.isdisjoint(row))
 
+    def test_fixture_codes_are_only_emitted_when_reference_descriptions_exist(self) -> None:
+        icd_reference = prepare_100_synthetic_dataset.ICD_REF
+        for row in self.records:
+            for item in row["gold_annotations"]["diagnoses"]:
+                if "icd10_code" in item:
+                    self.assertIn(item["icd10_code"], icd_reference)
+            for item in row["gold_annotations"]["icd10_cm_codes"]:
+                self.assertEqual(item["description"], icd_reference[item["code"]])
+                self.assertNotEqual(item["description"], "Unspecified")
+
     def test_every_reference_entity_span_matches_its_synthetic_note(self) -> None:
         category_map = {
             "diagnoses": "diagnosis",
