@@ -27,6 +27,8 @@ Evaluate whether the proposed system:
 - Labels must be created before prompt tuning.
 - Include diagnosis, medication and procedure spans/status, and correct ICD-10 diagnosis labels where supported.
 - Write annotation rules before annotation; record ambiguous cases and any review/adjudication procedure.
+- In the current five-category schema, procedure spans cover diagnostic tests/investigations (including laboratory tests), imaging/monitoring, surgery, and clinical interventions such as IV hydration. Medication names/classes and exercise or self-care advice are not procedures.
+- The generated synthetic reference fixtures are deterministic regression data, not independent clinical labels. AI-generated annotations must retain AI provenance and are not eligible as clinical gold. Neither source satisfies the SOW's manually labelled gold-standard requirement.
 - Separate development/prompt-iteration data from the independent final reporting set. Do not claim independent performance on repeatedly tuned examples.
 
 ### Systems compared
