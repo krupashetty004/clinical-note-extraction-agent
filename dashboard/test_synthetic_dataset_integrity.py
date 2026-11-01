@@ -77,6 +77,74 @@ class SyntheticDatasetIntegrityTests(unittest.TestCase):
                     self.assertEqual(item["evidence_text"], row["note_text"][start:end])
                     self.assertEqual(item["entity"], row["note_text"][start:end])
 
+    def test_offline_review_corrections_cover_omitted_note_entities(self):
+        cardio_followup = self.records_by_id["mirai-synth-002"]
+        cardio_medications = {
+            item["entity"].casefold()
+            for item in cardio_followup["gold_annotations"]["medications"]
+        }
+        self.assertIn("carvedilol", cardio_medications)
+
+        post_mi = self.records_by_id["mirai-synth-004"]
+        self.assertIn(
+            "lipid panel",
+            [item["entity"].casefold() for item in post_mi["gold_annotations"]["procedures"]],
+        )
+
+        hypertensive_urgency = self.records_by_id["mirai-synth-007"]
+        self.assertIn(
+            "hypertensive urgency",
+            [item["entity"].casefold() for item in hypertensive_urgency["gold_annotations"]["diagnoses"]],
+        )
+        self.assertIn(
+            "labetalol",
+            [item["entity"].casefold() for item in hypertensive_urgency["gold_annotations"]["medications"]],
+        )
+
+        t1_diabetes = self.records_by_id["mirai-synth-033"]
+        self.assertIn(
+            "insulin lispro",
+            [item["entity"].casefold() for item in t1_diabetes["gold_annotations"]["medications"]],
+        )
+
+        kidney_disease = self.records_by_id["mirai-synth-037"]
+        self.assertIn(
+            "glimepiride",
+            [item["entity"].casefold() for item in kidney_disease["gold_annotations"]["medications"]],
+        )
+        self.assertNotIn(
+            "hypertension",
+            [item["entity"].casefold() for item in kidney_disease["gold_annotations"]["diagnoses"]],
+        )
+
+        pancreatic_cancer = self.records_by_id["mirai-synth-086"]
+        self.assertIn(
+            "pancreatic cancer",
+            [item["entity"].casefold() for item in pancreatic_cancer["gold_annotations"]["diagnoses"]],
+        )
+
+        renal_artery_stenosis = self.records_by_id["mirai-synth-097"]
+        self.assertIn(
+            "renal artery stenosis",
+            [item["entity"].casefold() for item in renal_artery_stenosis["gold_annotations"]["diagnoses"]],
+        )
+
+        fatty_liver = self.records_by_id["mirai-synth-099"]
+        self.assertIn(
+            "nonalcoholic fatty liver disease",
+            [item["entity"].casefold() for item in fatty_liver["gold_annotations"]["diagnoses"]],
+        )
+
+    def test_offline_review_provenance_does_not_claim_human_gold(self):
+        for row in self.records:
+            provenance = row["label_provenance"]
+            self.assertEqual(provenance["review_method"], "offline_source_text_audit")
+            self.assertEqual(provenance["review_batch_count"], 10)
+            self.assertEqual(provenance["review_batch_size"], 10)
+            self.assertFalse(provenance["is_human_gold"])
+            self.assertFalse(row["clinical_performance_eligible"])
+            self.assertEqual(row["adjudication_status"], "not_reviewed")
+
     def test_ai_input_contains_no_prelabelled_annotations(self) -> None:
         fixture = self.records[0]
         ai_input = prepare_100_synthetic_dataset.build_ai_input_record(fixture)
