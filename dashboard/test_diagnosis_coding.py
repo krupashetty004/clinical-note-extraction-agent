@@ -90,6 +90,98 @@ class DiagnosisCodingIntegrationTests(TestCase):
             "candidates_found",
         )
 
+    def test_ranks_context_supported_unspecified_candidate_ahead_of_subtypes(self):
+        note = "Assessment: atrial fibrillation is stable."
+        payload = self.make_payload(
+            note,
+            entity="atrial fibrillation",
+            evidence="atrial fibrillation",
+        )
+
+        candidates = (
+            ICD10Candidate("I480", "Paroxysmal atrial fibrillation", 1.0),
+            ICD10Candidate("I4821", "Permanent atrial fibrillation", 1.0),
+            ICD10Candidate("I4891", "Unspecified atrial fibrillation", 1.0),
+        )
+
+        with patch(
+            "dashboard.extraction.diagnosis_coding.search_hybrid_icd10",
+            return_value=ICD10LookupResult(
+                query="atrial fibrillation",
+                status="candidates_found",
+                candidates=candidates,
+            ),
+        ):
+            result = code_diagnoses(payload, note)
+
+        coding = result.diagnoses[0].coding
+        self.assertEqual(coding.status, "candidates_found")
+        self.assertEqual(coding.candidates[0].code, "I4891")
+        self.assertEqual(
+            [candidate.code for candidate in coding.candidates],
+            ["I4891"],
+        )
+
+    def test_abstains_when_all_candidates_add_unsupported_specificity(self):
+        note = "Assessment: edema noted."
+        payload = self.make_payload(
+            note,
+            entity="edema",
+            evidence="edema",
+        )
+
+        candidates = (
+            ICD10Candidate("G936", "Cerebral edema", 1.0),
+            ICD10Candidate("H3581", "Retinal edema", 1.0),
+            ICD10Candidate("J384", "Edema of larynx", 1.0),
+        )
+
+        with patch(
+            "dashboard.extraction.diagnosis_coding.search_hybrid_icd10",
+            return_value=ICD10LookupResult(
+                query="edema",
+                status="candidates_found",
+                candidates=candidates,
+            ),
+        ):
+            result = code_diagnoses(payload, note)
+
+        coding = result.diagnoses[0].coding
+        self.assertEqual(coding.status, "no_confident_match")
+        self.assertEqual(
+            coding.candidate_disposition,
+            "weak_matches_for_review",
+        )
+        self.assertIn("specificity", coding.reason)
+
+    def test_keeps_chronic_candidate_when_note_explicitly_says_chronic(self):
+        note = "Assessment: stable chronic cough."
+        payload = self.make_payload(
+            note,
+            entity="cough",
+            evidence="cough",
+        )
+
+        candidates = (
+            ICD10Candidate("R051", "Acute cough", 1.0),
+            ICD10Candidate("R053", "Chronic cough", 1.0),
+            ICD10Candidate("R059", "Cough, unspecified", 1.0),
+        )
+
+        with patch(
+            "dashboard.extraction.diagnosis_coding.search_hybrid_icd10",
+            return_value=ICD10LookupResult(
+                query="cough",
+                status="candidates_found",
+                candidates=candidates,
+            ),
+        ):
+            result = code_diagnoses(payload, note)
+
+        coding = result.diagnoses[0].coding
+        self.assertEqual(coding.status, "candidates_found")
+        self.assertEqual(coding.candidates[0].code, "R053")
+
     def test_preserves_historical_status(self):
         note = (
             "History: Type 2 diabetes mellitus without complications."
