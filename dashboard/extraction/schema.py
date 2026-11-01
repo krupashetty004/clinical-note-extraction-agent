@@ -132,6 +132,8 @@ class EvidenceSpanValidationError(ValueError):
 _WORD_PATTERN = re.compile(r"[^\W_]+", re.UNICODE)
 _NEGATION_CUES = (
     "no ",
+    "no recurrent",
+    "no known",
     "no evidence of",
     "denies ",
     "denied ",
@@ -144,11 +146,17 @@ _NEGATION_CUES = (
 )
 _HISTORICAL_CUES = (
     "history of",
+    "past history",
+    "past medical history",
+    "pmh:",
+    "hx of",
     "historical",
     "previously",
     "formerly",
     "in the past",
     "remote ",
+    "status post",
+    "in remission",
 )
 _UNCERTAINTY_CUES = (
     "possible ",
@@ -159,13 +167,24 @@ _UNCERTAINTY_CUES = (
     "might have",
     "question of",
     "concern for",
+    "high suspicion for",
+    "suspicion of",
+    "suspicion for",
 )
 _CURRENT_CUES = (
     "current ",
     "currently ",
     "active ",
     "present ",
+    "well-controlled",
+    "well controlled",
+    "controlled",
+    "uncontrolled",
+    "stable",
+    "compensated",
+    "ongoing",
 )
+
 _DISCONTINUED_CUES = (
     "discontinued",
     "stopped",
@@ -263,10 +282,12 @@ def validate_item_status_context(
         item.end_offset,
     )
     if item.category == "diagnosis":
+        has_current_context = _contains_cue(context, _CURRENT_CUES)
+        has_historical_context = _contains_cue(context, _HISTORICAL_CUES)
         if item.status == "active" and (
             _contains_cue(context, _NEGATION_CUES)
-            or _contains_cue(context, _HISTORICAL_CUES)
             or _contains_cue(context, _UNCERTAINTY_CUES)
+            or (has_historical_context and not has_current_context)
         ):
             return (
                 "Active diagnosis evidence conflicts with its source context."
