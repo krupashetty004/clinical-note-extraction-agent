@@ -236,9 +236,8 @@ allergy, vital_sign. For diagnosis, status must be active, historical, ruled_out
 or suspected. For medication, status must be current, discontinued, or newly_prescribed.
 For other categories, status must be null. attributes must be an object containing
 only the supported string fields in the output schema; use null for unknown fields.
-If you choose an ICD-10-CM code for a diagnosis, provide both icd10_code and
-icd10_description. Only include a code when the diagnosis wording supports a plausible
-candidate; use null for both fields when a code is not supported.
+Always return null for icd10_code and icd10_description. Do not guess or generate
+ICD-10-CM codes; code retrieval is a separate reference-table-backed step.
 review_reasons must be an array of short strings. A valid no-finding annotation may
 return items=[] with an explicit expected_needs_review boolean. These annotations
 are AI-generated benchmark references, not independent clinical gold or medical
