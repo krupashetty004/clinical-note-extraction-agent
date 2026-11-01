@@ -59,6 +59,33 @@ def _sentence_context(note: str, start: int, end: int) -> str:
     return note[left + 1:right + 1].casefold()
 
 
+def _candidate_context_specificity_score(
+    candidate: ICD10Candidate,
+    item: ExtractedItem,
+    original_note: str,
+) -> int:
+    """Count candidate-specific descriptor tokens explicitly stated nearby.
+
+    Tokens already present in the diagnosis mention and generic code-title
+    terms do not add specificity. The score is a deterministic tie-breaker,
+    not a probability or a replacement for the specificity guard.
+    """
+    context = _sentence_context(
+        original_note,
+        item.start_offset,
+        item.end_offset,
+    )
+    context_tokens = set(re.findall(r"[a-z]+", context))
+    mention_tokens = set(re.findall(r"[a-z]+", item.entity.casefold()))
+    description_tokens = set(
+        re.findall(r"[a-z]+", candidate.description.casefold())
+    )
+    candidate_modifiers = (
+        description_tokens - mention_tokens - _GENERIC_CODE_DESCRIPTOR_TERMS
+    )
+    return len(candidate_modifiers & context_tokens)
+
+
 def _candidate_specificity_is_supported(
     candidate: ICD10Candidate,
     item: ExtractedItem,
@@ -148,6 +175,23 @@ def _apply_specificity_guard(
             )
         )
     )
+
+    if qualifying:
+        original_positions = {
+            candidate.code: index
+            for index, candidate in enumerate(lookup.candidates)
+        }
+        qualifying = tuple(sorted(
+            qualifying,
+            key=lambda candidate: (
+                -_candidate_context_specificity_score(
+                    candidate,
+                    item,
+                    original_note,
+                ),
+                original_positions[candidate.code],
+            ),
+        ))
 
     if lookup.status == "candidates_found" and qualifying:
         return ICD10LookupResult(
