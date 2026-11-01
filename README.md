@@ -137,7 +137,7 @@ The analyzer prepares a full normalized local corpus, a deterministic 100-note s
 
 The 100-note queue starts unannotated. MTSamples specialty labels and keywords are not gold entity annotations. Never mark automatically generated labels as human gold or independently adjudicated. AI-generated labels may be tracked separately as provisional benchmark labels, not clinical gold.
 
-The Doctor annotation workspace loads the locally prepared queue when it exists and saves drafts beside that queue. The tracked template remains a fallback only. The source CSV, normalized records, annotation queue, and working drafts stay in the ignored `.dataset_working/\` directory.
+The Doctor annotation workspace loads the locally prepared queue when it exists and saves drafts beside that queue. There is no tracked note-level annotation template: the source CSV, normalized records, annotation queue, and working drafts stay in the ignored `.dataset_working/\` directory.
 
 ### Process the prepared dataset through the clinical agent
 
