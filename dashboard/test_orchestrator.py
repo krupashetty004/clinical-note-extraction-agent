@@ -4,7 +4,14 @@ from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
-from dashboard.extraction.diagnosis_coding import DiagnosisCodingBatch
+from dashboard.extraction.coding_schema import (
+    ICD10CodeCandidate,
+    ICD10CodingResult,
+)
+from dashboard.extraction.diagnosis_coding import (
+    CodedDiagnosisMention,
+    DiagnosisCodingBatch,
+)
 from dashboard.extraction.orchestrator import run_agent_workflow
 
 
@@ -425,6 +432,54 @@ class AgentWorkflowTests(SimpleTestCase):
         self.assertEqual(
             result.item_dispositions[0].decision,
             "needs_review",
+        )
+
+    def test_suspected_diagnosis_requires_review_even_with_code_candidate(self):
+        note = "Assessment: possible diabetes."
+        evidence = "possible diabetes"
+        start = note.index(evidence)
+        coding = ICD10CodingResult(
+            query="diabetes",
+            status="candidates_found",
+            candidate_disposition="threshold_met",
+            candidates=(
+                ICD10CodeCandidate(
+                    code="E119",
+                    description="Type 2 diabetes mellitus without complications",
+                    lexical_score=1.0,
+                    rank=1,
+                ),
+            ),
+        )
+        self.mock_coding.return_value = DiagnosisCodingBatch(
+            diagnoses=(
+                CodedDiagnosisMention(
+                    entity="diabetes",
+                    status="suspected",
+                    evidence_text=evidence,
+                    start_offset=start,
+                    end_offset=start + len(evidence),
+                    coding=coding,
+                ),
+            )
+        )
+
+        result = self._run_diagnosis_scenario(
+            note=note,
+            extraction_evidence=evidence,
+            status="suspected",
+            verification_outcome="supported",
+            status_check="correct",
+        )
+
+        self.assertEqual(result.status, "needs_review")
+        self.assertEqual(
+            result.item_dispositions[0].decision,
+            "needs_review",
+        )
+        self.assertTrue(
+            any("suspected" in reason.lower()
+                for reason in result.item_dispositions[0].reasons)
         )
 
     def test_incorrect_diagnosis_status_requires_review(self):
