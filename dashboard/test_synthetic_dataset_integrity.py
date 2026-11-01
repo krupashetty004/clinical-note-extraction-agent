@@ -90,6 +90,10 @@ class SyntheticDatasetIntegrityTests(unittest.TestCase):
             "nitroglycerin",
             [item["entity"].casefold() for item in angina_followup["gold_annotations"]["medications"]],
         )
+        self.assertIn(
+            "isosorbide mononitrate",
+            [item["entity"].casefold() for item in angina_followup["gold_annotations"]["medications"]],
+        )
         self.assertEqual(angina_followup["gold_annotations"]["procedures"], [])
 
         migraine_case = self.records_by_id["mirai-synth-020"]
