@@ -134,14 +134,27 @@ def _prediction_from_result(record, workflow_result) -> dict[str, Any]:
         for item in workflow_result.item_dispositions
     }
     candidates_by_span: dict[tuple[int, int], list[str]] = {}
+    candidate_details_by_span: dict[
+        tuple[int, int], list[dict[str, Any]]
+    ] = {}
     if workflow_result.coding is not None:
         for mention in workflow_result.coding.diagnoses:
-            candidate_codes = [
-                candidate.code for candidate in mention.coding.candidates
+            candidates = mention.coding.candidates
+            span = (mention.start_offset, mention.end_offset)
+            candidates_by_span[span] = [
+                candidate.code for candidate in candidates
             ]
-            candidates_by_span[(mention.start_offset, mention.end_offset)] = (
-                candidate_codes
-            )
+            candidate_details_by_span[span] = [
+                {
+                    "code": candidate.code,
+                    "description": candidate.description,
+                    "rank": candidate.rank,
+                    "lexical_score": candidate.lexical_score,
+                    "semantic_score": candidate.semantic_score,
+                    "combined_score": candidate.combined_score,
+                }
+                for candidate in candidates
+            ]
 
     predicted_items: list[dict[str, Any]] = []
     extraction = workflow_result.extraction
@@ -149,8 +162,10 @@ def _prediction_from_result(record, workflow_result) -> dict[str, Any]:
         for index, item in enumerate(extraction.items):
             predicted = item.model_dump(mode="json")
             predicted["decision"] = decisions.get(index, "needs_review")
-            predicted["icd10_candidates"] = candidates_by_span.get(
-                (item.start_offset, item.end_offset), []
+            span = (item.start_offset, item.end_offset)
+            predicted["icd10_candidates"] = candidates_by_span.get(span, [])
+            predicted["icd10_candidate_details"] = (
+                candidate_details_by_span.get(span, [])
             )
             predicted_items.append(predicted)
 
