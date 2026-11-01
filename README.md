@@ -175,10 +175,24 @@ For a separate synthetic-only annotation pilot, run:
 
 ```powershell
 python scripts\\prepare_100_synthetic_dataset.py
+
+$env:DJANGO_DEBUG = "1"
+$env:MIRAI_ENABLE_GROQ_PROVIDER = "1"
+$secureKey = Read-Host "Groq API key" -AsSecureString
+$env:GROQ_API_KEY = [System.Net.NetworkCredential]::new("", $secureKey).Password
+
 python -m evaluation.generate_ai_benchmark --limit 5
+
+# Only after inspecting the 5-note pilot:
+python -m evaluation.generate_ai_benchmark --limit 100 --resume
+
+Remove the local provider configuration after the run:
+Remove-Item Env:\\MIRAI_ENABLE_GROQ_PROVIDER
+Remove-Item Env:\\GROQ_API_KEY
+Remove-Item Env:\\DJANGO_DEBUG
 ```
 
-The generator writes deterministic reference fixtures and a separate label-free AI input file under the Git-ignored `.dataset_working/\` directory. After reviewing the 5-note pilot and its outputs, the remaining synthetic notes can be processed with `--limit 100 --resume`. AI output is stored separately with `label_source=ai_model` and `clinical_performance_eligible=false`; it is not clinical gold. Non-synthetic records remain blocked unless their owner and provider use have been approved.
+The generator writes deterministic reference fixtures and a separate label-free AI input file under the Git-ignored `.dataset_working/\` directory. The five-note run is the required pilot; inspect evidence spans, category assignments, statuses and review flags before running the remaining notes. AI output is stored separately with `label_source=ai_model`, `clinical_performance_eligible=false` and `adjudication_status=not_reviewed`; it is not clinical gold. Model-proposed ICD-10 codes are discarded until reference-table retrieval is implemented. Non-synthetic records remain blocked; do not enable external clinical processing for this prototype.
 
 Do not use the legacy generated scorecard as proof that the original acceptance targets have been met. The MTSamples source does not provide note-level gold entity spans, assertion labels, or validated ICD-10-CM labels. It therefore cannot independently establish diagnosis/medication F1, evidence faithfulness, status accuracy or coding accuracy without suitable validated annotations.
 
