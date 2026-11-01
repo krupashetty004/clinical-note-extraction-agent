@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - local/ai-benchmark-pipeline
+      - feature/mirai-completion-2026-11
   pull_request:
     branches:
       - main
