@@ -122,7 +122,7 @@ class DiagnosisCodingIntegrationTests(TestCase):
             ["I4891"],
         )
 
-    def test_ranks_source_supported_ms_course_ahead_of_unspecified_candidate(self):
+    def test_includes_relapsing_remitting_modifier_in_icd_search_query(self):
         note = (
             "History: Patient with relapsing-remitting multiple sclerosis "
             "presents for follow-up."
@@ -134,26 +134,30 @@ class DiagnosisCodingIntegrationTests(TestCase):
         )
 
         candidates = (
-            ICD10Candidate("G35D", "Multiple sclerosis, unspecified", 1.0),
-            ICD10Candidate("G35A", "Relapsing-remitting multiple sclerosis", 0.9),
+            ICD10Candidate("G35A", "Relapsing-remitting multiple sclerosis", 1.0),
+            ICD10Candidate("G35D", "Multiple sclerosis, unspecified", 0.75),
         )
 
         with patch(
             "dashboard.extraction.diagnosis_coding.search_hybrid_icd10",
             return_value=ICD10LookupResult(
-                query="multiple sclerosis",
+                query="relapsing-remitting multiple sclerosis",
                 status="candidates_found",
                 candidates=candidates,
             ),
-        ):
+        ) as mock_search:
             result = code_diagnoses(payload, note)
 
+        self.assertEqual(
+            mock_search.call_args.args[0],
+            "relapsing-remitting multiple sclerosis",
+        )
         coding = result.diagnoses[0].coding
         self.assertEqual(coding.status, "candidates_found")
         self.assertEqual(coding.candidates[0].code, "G35A")
         self.assertEqual(
-            [candidate.code for candidate in coding.candidates],
-            ["G35A", "G35D"],
+            [candidate.rank for candidate in coding.candidates],
+            [1, 2],
         )
 
     def test_abstains_when_all_candidates_add_unsupported_specificity(self):
