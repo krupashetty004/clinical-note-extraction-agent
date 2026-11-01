@@ -100,7 +100,20 @@ class ICD10BatchAuditTests(unittest.TestCase):
 
         self.assertEqual(report["candidate_code_missing_count"], 1)
         self.assertIn("candidate_code_missing_from_reference", codes)
-        self.assertIn("candidate_code_detail_mismatch", codes)
+
+    def test_flags_candidate_code_and_detail_list_mismatch(self):
+        self.prediction_rows[0]["items"][0]["icd10_candidates"] = ["I10", "E119"]
+
+        report = self.audit()
+
+        self.assertEqual(
+            report["candidate_code_detail_mismatch_count"],
+            1,
+        )
+        self.assertIn(
+            "candidate_code_detail_mismatch",
+            {item["code"] for item in report["errors"]},
+        )
 
     def test_flags_candidate_description_mismatch_for_known_code(self):
         candidate = self.prediction_rows[0]["items"][0][
