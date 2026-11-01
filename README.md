@@ -171,6 +171,15 @@ Resume an interrupted batch with `--resume`; deliberately replace outputs with `
 
 The repository contains synthetic smoke tests, challenge observations and measured synthetic benchmark tooling. Their results are not interchangeable with independent clinical gold-standard evaluation.
 
+For a separate synthetic-only annotation pilot, run:
+
+```powershell
+python scripts\\prepare_100_synthetic_dataset.py
+python -m evaluation.generate_ai_benchmark --limit 5
+```
+
+The generator writes deterministic reference fixtures and a separate label-free AI input file under the Git-ignored `.dataset_working/\` directory. After reviewing the 5-note pilot and its outputs, the remaining synthetic notes can be processed with `--limit 100 --resume`. AI output is stored separately with `label_source=ai_model` and `clinical_performance_eligible=false`; it is not clinical gold. Non-synthetic records remain blocked unless their owner and provider use have been approved.
+
 Do not use the legacy generated scorecard as proof that the original acceptance targets have been met. The MTSamples source does not provide note-level gold entity spans, assertion labels, or validated ICD-10-CM labels. It therefore cannot independently establish diagnosis/medication F1, evidence faithfulness, status accuracy or coding accuracy without suitable validated annotations.
 
 The current 100-record file in the repository must not be treated as 100 independently adjudicated clinical gold notes. Check `docs/evaluation-plan.md` before reporting evaluation results.
