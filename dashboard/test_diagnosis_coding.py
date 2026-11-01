@@ -515,7 +515,7 @@ class DiagnosisCodingIntegrationTests(TestCase):
         payload = self.make_payload(
             note,
             entity="Pneumonia",
-            evidence="Pneumonia",
+            evidence="pneumonia",
         )
         candidates = (
             ICD10Candidate("A0103", "Typhoid pneumonia", 1.0),
