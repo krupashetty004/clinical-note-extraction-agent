@@ -182,7 +182,7 @@ The generator writes deterministic reference fixtures and a separate label-free 
 
 Do not use the legacy generated scorecard as proof that the original acceptance targets have been met. The MTSamples source does not provide note-level gold entity spans, assertion labels, or validated ICD-10-CM labels. It therefore cannot independently establish diagnosis/medication F1, evidence faithfulness, status accuracy or coding accuracy without suitable validated annotations.
 
-The current 100-record file in the repository must not be treated as 100 independently adjudicated clinical gold notes. Check `docs/evaluation-plan.md` before reporting evaluation results.
+The previously tracked 100-note annotation file was removed because its metadata incorrectly claimed human annotation and adjudication. Generated datasets must remain local and ignored. Do not treat synthetic reference fixtures or AI-generated annotations as clinical gold. Check `docs/evaluation-plan.md` before reporting evaluation results.
 
 ## Running Tests
 
