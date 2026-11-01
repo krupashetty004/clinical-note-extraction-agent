@@ -141,6 +141,8 @@ class SyntheticDatasetIntegrityTests(unittest.TestCase):
             self.assertEqual(provenance["review_method"], "offline_source_text_audit")
             self.assertEqual(provenance["review_batch_count"], 10)
             self.assertEqual(provenance["review_batch_size"], 10)
+            self.assertEqual(provenance["review_batch_number"], ((int(row["source_row_number"]) - 1) // 10) + 1)
+            self.assertEqual(provenance["review_batch_record_number"], ((int(row["source_row_number"]) - 1) % 10) + 1)
             self.assertFalse(provenance["is_human_gold"])
             self.assertFalse(row["clinical_performance_eligible"])
             self.assertEqual(row["adjudication_status"], "not_reviewed")
