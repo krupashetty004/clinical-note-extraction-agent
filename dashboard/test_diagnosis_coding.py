@@ -441,3 +441,131 @@ class DiagnosisCodingIntegrationTests(TestCase):
         )
         self.mock_hybrid_search = self.hybrid_patcher.start()
         self.addCleanup(self.hybrid_patcher.stop)
+
+    def test_abstains_on_unsupported_hypertension_subtypes(self):
+        note = "Assessment: Hypertension."
+        payload = self.make_payload(
+            note,
+            entity="Hypertension",
+            evidence="Hypertension",
+        )
+        candidates = (
+            ICD10Candidate("I150", "Renovascular hypertension", 1.0),
+            ICD10Candidate("I1A0", "Resistant hypertension", 1.0),
+            ICD10Candidate("I973", "Postprocedural hypertension", 1.0),
+        )
+
+        with patch(
+            "dashboard.extraction.diagnosis_coding.search_hybrid_icd10",
+            return_value=ICD10LookupResult(
+                query="Hypertension",
+                status="candidates_found",
+                candidates=candidates,
+            ),
+        ):
+            result = code_diagnoses(payload, note)
+
+        coding = result.diagnoses[0].coding
+        self.assertEqual(coding.status, "no_confident_match")
+        self.assertEqual(
+            coding.candidate_disposition,
+            "weak_matches_for_review",
+        )
+        self.assertIn("specificity", coding.reason)
+
+    def test_abstains_on_epilepsy_susceptibility_and_family_history_codes(self):
+        note = "Assessment: Epilepsy."
+        payload = self.make_payload(
+            note,
+            entity="Epilepsy",
+            evidence="Epilepsy",
+        )
+        candidates = (
+            ICD10Candidate(
+                "Z151",
+                "Genetic susceptibility to epilepsy and neurodevelopmental disorders",
+                1.0,
+            ),
+            ICD10Candidate(
+                "Z820",
+                "Family history of epilepsy and other diseases of the nervous system",
+                1.0,
+            ),
+        )
+
+        with patch(
+            "dashboard.extraction.diagnosis_coding.search_hybrid_icd10",
+            return_value=ICD10LookupResult(
+                query="Epilepsy",
+                status="candidates_found",
+                candidates=candidates,
+            ),
+        ):
+            result = code_diagnoses(payload, note)
+
+        coding = result.diagnoses[0].coding
+        self.assertEqual(coding.status, "no_confident_match")
+        self.assertEqual(
+            coding.candidate_disposition,
+            "weak_matches_for_review",
+        )
+
+    def test_abstains_on_infectious_cause_added_to_generic_pneumonia(self):
+        note = "Assessment: Pneumonia."
+        payload = self.make_payload(
+            note,
+            entity="Pneumonia",
+            evidence="Pneumonia",
+        )
+        candidates = (
+            ICD10Candidate("A0103", "Typhoid pneumonia", 1.0),
+            ICD10Candidate("A0222", "Salmonella pneumonia", 1.0),
+            ICD10Candidate("A5484", "Gonococcal pneumonia", 1.0),
+        )
+
+        with patch(
+            "dashboard.extraction.diagnosis_coding.search_hybrid_icd10",
+            return_value=ICD10LookupResult(
+                query="Pneumonia",
+                status="candidates_found",
+                candidates=candidates,
+            ),
+        ):
+            result = code_diagnoses(payload, note)
+
+        coding = result.diagnoses[0].coding
+        self.assertEqual(coding.status, "no_confident_match")
+        self.assertEqual(
+            coding.candidate_disposition,
+            "weak_matches_for_review",
+        )
+
+    def test_keeps_specific_infectious_code_when_note_documents_cause(self):
+        note = "Assessment: Typhoid pneumonia."
+        payload = self.make_payload(
+            note,
+            entity="Pneumonia",
+            evidence="Pneumonia",
+        )
+        candidates = (
+            ICD10Candidate("A0103", "Typhoid pneumonia", 1.0),
+            ICD10Candidate("A0222", "Salmonella pneumonia", 0.9),
+        )
+
+        with patch(
+            "dashboard.extraction.diagnosis_coding.search_hybrid_icd10",
+            return_value=ICD10LookupResult(
+                query="Pneumonia",
+                status="candidates_found",
+                candidates=candidates,
+            ),
+        ):
+            result = code_diagnoses(payload, note)
+
+        coding = result.diagnoses[0].coding
+        self.assertEqual(coding.status, "candidates_found")
+        self.assertEqual(
+            [candidate.code for candidate in coding.candidates],
+            ["A0103"],
+        )
+
