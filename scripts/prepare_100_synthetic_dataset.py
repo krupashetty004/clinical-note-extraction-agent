@@ -7,16 +7,9 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ICD_REF_PATH = REPO_ROOT / "data" / "reference" / "icd10cm-codes-2027.txt"
-OUTPUT_PATH = (
-    REPO_ROOT
-    / "mirai_dataset_preparation_pack"
-    / "data"
-    / "external"
-    / "mtsamples"
-    / "annotations"
-    / "annotation_template_100.jsonl"
-)
-WORKING_QUEUE_PATH = REPO_ROOT / ".annotation_working_queue.jsonl"
+LOCAL_DATA_ROOT = REPO_ROOT / ".dataset_working"
+OUTPUT_PATH = LOCAL_DATA_ROOT / "synthetic" / "reference_fixture_100.jsonl"
+WORKING_QUEUE_PATH = LOCAL_DATA_ROOT / "synthetic" / "ai_input_100.jsonl"
 
 def load_icd_reference(path: Path) -> dict[str, str]:
     ref: dict[str, str] = {}
@@ -630,9 +623,11 @@ def generate_100_records() -> list[dict[str, Any]]:
         raise ValueError(f"Expected 100 cases, got {len(all_cases)}")
 
     corrections = {
+        7: {'meds': [('hydrochlorothiazide', 'newly_prescribed'), ('labetalol', 'newly_prescribed')], 'procs': []},
+        10: {'meds': [('metoprolol', 'current'), ('nitroglycerin', 'newly_prescribed')], 'procs': []},
         12: {'procs': ['levetiracetam trough level']},
         18: {'procs': []},
-        20: {'procs': ['CGRP antagonist']},
+        20: {'meds': [('acetaminophen', 'discontinued'), ('ubrogepant', 'newly_prescribed'), ('CGRP antagonist', 'newly_prescribed')], 'procs': []},
         25: {'procs': []},
         28: {'procs': []},
         32: {'procs': ['TSH']},
@@ -644,7 +639,7 @@ def generate_100_records() -> list[dict[str, Any]]:
         49: {'procs': ['anti-tTG IgA']},
         55: {'diags': [], 'procs': ['arthroscopy', 'rotator cuff repair']},
         56: {'procs': ['sutures removed']},
-        57: {'procs': ['eccentric calf exercises']},
+        57: {'procs': []},
         60: {'procs': ['cast removed']},
         61: {'procs': []},
         62: {'procs': ['TB screening']},
@@ -661,7 +656,7 @@ def generate_100_records() -> list[dict[str, Any]]:
         92: {'vitals': ['heart rate'], 'procs': []},
         94: {'procs': []},
         95: {'procs': ['anti-CCP']},
-        96: {'procs': ['normal saline']},
+        96: {'procs': ['intravenous normal saline hydration']},
         98: {'procs': []},
     }
     for idx, (specialty, title, note_text, diag_specs, med_specs, proc_specs, allergy_specs, vital_specs, needs_review) in enumerate(all_cases, start=1):
@@ -703,35 +698,28 @@ def generate_100_records() -> list[dict[str, Any]]:
 
         record = {
             "record_id": rec_id,
-            "source_dataset": "kaggle:tboyle10/medicaltranscriptions",
-            "source_url": "https://www.kaggle.com/datasets/tboyle10/medicaltranscriptions/data",
+            "source_dataset": "synthetic:mirai-clinical-notes-v1",
+            "source_url": "local://synthetic",
             "source_row_number": idx,
             "specialty": specialty,
             "source_keywords": f"{specialty.lower()}; {title.lower()}",
             "note_text": note_text,
             "annotation_complete": True,
             "annotation_status": "complete",
-            "adjudication_status": "adjudicated",
-            "annotator_id": "synthetic_generator_v1",
-            "adjudicator_id": "synthetic_verifier_v1",
-            "adjudication_notes": "Automated synthetic extraction verified against exact character spans and ICD-10-CM 2027 reference table.",
-            "annotator_qualification": {
-                "qualified": True,
-                "basis": "Deterministic rule and ontology validator against canonical reference data",
-                "is_human": False,
-            },
-            "conflict_status": "not_applicable",
-            "conflict_notes": "All entity spans verified non-overlapping and exact matches to note_text.",
-            "reviewer_decision": "accepted" if not needs_review else "pending",
-            "reviewer_comment": "Synthetic model-generated annotation verified against reference data." if not needs_review else "Flagged for manual review due to ambiguity, ruled-out diagnosis, or contradiction.",
+            "adjudication_status": "not_reviewed",
+            "reviewer_decision": "pending",
+            "reviewer_comment": "Synthetic reference fixture generated from fixed case definitions; not clinically reviewed.",
             "expected_needs_review": needs_review,
-            "label_source": "model_generated_gold",
+            "clinical_performance_eligible": False,
+            "gold_evaluation_ready": False,
+            "label_source": "synthetic_reference_fixture",
             "label_provenance": {
-                "model_or_provider": "synthetic_rule_and_ontology_extractor_v1",
-                "generation_timestamp": "2026-10-29T02:30:00Z",
-                "annotation_guidelines": "mirai_clinical_guidelines_v1.0",
+                "fixture_version": "mirai-synthetic-reference-v1",
+                "generation_method": "authored_synthetic_case_definitions",
+                "annotation_guidelines": "mirai-entity-taxonomy-v1",
                 "is_human_gold": False,
-                "validation_status": "offsets_and_reference_codes_validated",
+                "clinical_review_status": "not_reviewed",
+                "validation_status": "exact_source_spans_checked",
             },
             "gold_annotations": {
                 "diagnoses": diagnoses,
@@ -746,20 +734,38 @@ def generate_100_records() -> list[dict[str, Any]]:
 
     return records
 
-def main():
+def build_ai_input_record(record: dict[str, Any]) -> dict[str, Any]:
+    """Keep model input independent from deterministic reference-fixture labels."""
+    fields = (
+        "record_id",
+        "source_dataset",
+        "source_url",
+        "source_row_number",
+        "specialty",
+        "source_keywords",
+        "note_text",
+    )
+    return {field: record[field] for field in fields}
+
+
+def _write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for record in records:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def main() -> None:
     records = generate_100_records()
     print(f"Generated {len(records)} synthetic records across 10 specialties.")
 
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with OUTPUT_PATH.open("w", encoding="utf-8") as f:
-        for r in records:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    print(f"Wrote {len(records)} records to {OUTPUT_PATH}")
+    _write_jsonl(OUTPUT_PATH, records)
+    print(f"Wrote {len(records)} deterministic reference fixtures to {OUTPUT_PATH}")
 
-    with WORKING_QUEUE_PATH.open("w", encoding="utf-8") as f:
-        for r in records:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    print(f"Wrote {len(records)} records to {WORKING_QUEUE_PATH}")
+    ai_input_records = [build_ai_input_record(record) for record in records]
+    _write_jsonl(WORKING_QUEUE_PATH, ai_input_records)
+    print(f"Wrote {len(ai_input_records)} label-free AI input records to {WORKING_QUEUE_PATH}")
+
 
 if __name__ == "__main__":
     main()
