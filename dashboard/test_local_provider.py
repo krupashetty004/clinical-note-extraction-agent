@@ -216,7 +216,7 @@ class TestLocalClinicalExtractionProvider(PureTestCase):
         )
         self.assertIsNotNone(diag)
         self.assertEqual(diag["status"], "suspected")
-    def test_past_history_section_heading_does_not_force_historical(self):
+    def test_past_history_section_heading_marks_historical_without_current_cue(self):
         note = "PAST HISTORY: Hypertension for 10 years."
         result = self.provider.extract(note)
         diagnosis = next(
@@ -224,7 +224,7 @@ class TestLocalClinicalExtractionProvider(PureTestCase):
             if item["category"] == "diagnosis"
             and item["entity"].casefold() == "hypertension"
         )
-        self.assertEqual(diagnosis["status"], "active")
+        self.assertEqual(diagnosis["status"], "historical")
 
     def test_well_controlled_condition_with_history_phrase_is_active(self):
         note = (
