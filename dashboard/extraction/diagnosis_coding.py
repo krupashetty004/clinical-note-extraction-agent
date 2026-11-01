@@ -1,7 +1,7 @@
 """Connect validated diagnosis mentions to hybrid ICD-10 retrieval."""
 
-from typing import cast
 import re
+from typing import cast
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
 
@@ -10,25 +10,25 @@ from dashboard.extraction.coding_schema import (
     coding_result_from_lookup,
 )
 from dashboard.extraction.icd10_search import (
+    ICD10Candidate,
     ICD10LookupResult,
     search_hybrid_icd10,
     search_icd10,
 )
-from dashboard.extraction.schema import DiagnosisStatus
+from dashboard.extraction.schema import DiagnosisStatus, ExtractedItem
 from dashboard.extraction.service import validate_extraction_output
 
-
-class CodedDiagnosisMention(BaseModel):
 
 # A candidate description that adds a clinical qualifier absent from the
 # diagnosis sentence must not be treated as a confident match.
 _CODE_SPECIFICITY_TERMS = frozenset({
     "acute", "subacute", "chronic", "old", "paroxysmal", "permanent",
     "persistent", "recurrent", "right", "left", "bilateral", "unilateral",
-    "cerebral", "retinal", "laryngeal", "pulmonary", "renal", "hepatic",
-    "diabetic", "traumatic", "nontraumatic", "ischemic", "hemorrhagic",
-    "systolic", "diastolic", "severe", "mild", "moderate", "obstructive",
-    "generalized", "generalised", "alveolar", "hypoventilation", "syncope",
+    "cerebral", "retinal", "laryngeal", "larynx", "pulmonary", "renal",
+    "hepatic", "diabetic", "traumatic", "nontraumatic", "ischemic",
+    "hemorrhagic", "systolic", "diastolic", "severe", "mild", "moderate",
+    "obstructive", "generalized", "generalised", "alveolar",
+    "hypoventilation", "syncope",
 })
 
 
@@ -39,7 +39,7 @@ def _sentence_context(note: str, start: int, end: int) -> str:
         note.rfind("!", 0, start),
         note.rfind("?", 0, start),
         note.rfind(";", 0, start),
-        note.rfind("\\n", 0, start),
+        note.rfind("\n", 0, start),
     )
     right_candidates = [
         position
@@ -48,7 +48,7 @@ def _sentence_context(note: str, start: int, end: int) -> str:
             note.find("!", end),
             note.find("?", end),
             note.find(";", end),
-            note.find("\\n", end),
+            note.find("\n", end),
         )
         if position >= 0
     ]
@@ -56,11 +56,15 @@ def _sentence_context(note: str, start: int, end: int) -> str:
     return note[left + 1:right + 1].casefold()
 
 
-def _candidate_specificity_is_supported(candidate, item, original_note: str) -> bool:
-    """Reject a candidate if its controlled qualifiers are absent from context.
+def _candidate_specificity_is_supported(
+    candidate: ICD10Candidate,
+    item: ExtractedItem,
+    original_note: str,
+) -> bool:
+    """Reject candidate qualifiers absent from the source sentence.
 
     Historical mention status supports the descriptor "old". This check is
-    deliberately conservative: it does not infer clinical synonyms.
+    deliberately conservative and does not infer clinical synonyms.
     """
     context = _sentence_context(
         original_note,
@@ -83,7 +87,7 @@ def _candidate_specificity_is_supported(candidate, item, original_note: str) -> 
 
 def _apply_specificity_guard(
     lookup: ICD10LookupResult,
-    item,
+    item: ExtractedItem,
     original_note: str,
     *,
     limit: int,
@@ -124,6 +128,7 @@ def _apply_specificity_guard(
                 candidate.semantic_score is not None
                 and candidate.semantic_score >= minimum_semantic_score
             )
+        )
     )
 
     if lookup.status == "candidates_found" and qualifying:
@@ -143,6 +148,8 @@ def _apply_specificity_guard(
         ),
     )
 
+
+class CodedDiagnosisMention(BaseModel):
     """A diagnosis mention paired with candidates, not a confirmed code."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
