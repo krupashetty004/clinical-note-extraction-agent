@@ -137,10 +137,12 @@ def _prediction_from_result(record, workflow_result) -> dict[str, Any]:
     candidate_details_by_span: dict[
         tuple[int, int], list[dict[str, Any]]
     ] = {}
+    coding_results_by_span = {}
     if workflow_result.coding is not None:
         for mention in workflow_result.coding.diagnoses:
             candidates = mention.coding.candidates
             span = (mention.start_offset, mention.end_offset)
+            coding_results_by_span[span] = mention.coding
             candidates_by_span[span] = [
                 candidate.code for candidate in candidates
             ]
@@ -166,6 +168,20 @@ def _prediction_from_result(record, workflow_result) -> dict[str, Any]:
             predicted["icd10_candidates"] = candidates_by_span.get(span, [])
             predicted["icd10_candidate_details"] = (
                 candidate_details_by_span.get(span, [])
+            )
+            coding_result = coding_results_by_span.get(span)
+            predicted["icd10_status"] = (
+                coding_result.status if coding_result is not None else "not_available"
+            )
+            predicted["icd10_candidate_disposition"] = (
+                coding_result.candidate_disposition
+                if coding_result is not None
+                else "none"
+            )
+            predicted["icd10_reason"] = (
+                coding_result.reason or ""
+                if coding_result is not None
+                else "No coding result was available for this diagnosis."
             )
             predicted_items.append(predicted)
 
