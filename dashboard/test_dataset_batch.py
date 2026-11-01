@@ -96,8 +96,29 @@ class DatasetBatchTests(SimpleTestCase):
 
     @patch("dashboard.extraction.dataset_batch.run_agent_workflow")
     def test_processes_queue_locally_and_writes_traceable_outputs(self, mock_run):
+        first_result = fake_workflow_result("completed")
+        first_result.coding = SimpleNamespace(
+            diagnoses=[
+                SimpleNamespace(
+                    start_offset=12,
+                    end_offset=24,
+                    coding=SimpleNamespace(
+                        candidates=[
+                            SimpleNamespace(
+                                code="I10",
+                                description="Essential (primary) hypertension",
+                                rank=1,
+                                lexical_score=1.0,
+                                semantic_score=0.91,
+                                combined_score=0.96,
+                            )
+                        ]
+                    ),
+                )
+            ]
+        )
         mock_run.side_effect = [
-            fake_workflow_result("completed"),
+            first_result,
             fake_workflow_result("needs_review"),
         ]
 
@@ -127,6 +148,20 @@ class DatasetBatchTests(SimpleTestCase):
         self.assertEqual(result["new_records_processed"], 2)
         self.assertEqual([row["case_id"] for row in predictions], ["case-001", "case-002"])
         self.assertEqual(predictions[0]["items"][0]["decision"], "accepted")
+        self.assertEqual(predictions[0]["items"][0]["icd10_candidates"], ["I10"])
+        self.assertEqual(
+            predictions[0]["items"][0]["icd10_candidate_details"],
+            [
+                {
+                    "code": "I10",
+                    "description": "Essential (primary) hypertension",
+                    "rank": 1,
+                    "lexical_score": 1.0,
+                    "semantic_score": 0.91,
+                    "combined_score": 0.96,
+                }
+            ],
+        )
         self.assertEqual(predictions[0]["source_row_number"], 1)
         self.assertEqual(predictions[0]["specialty"], "Cardiology")
         self.assertTrue(predictions[0]["note_sha256"])
