@@ -103,6 +103,9 @@ class DatasetBatchTests(SimpleTestCase):
                     start_offset=12,
                     end_offset=24,
                     coding=SimpleNamespace(
+                        status="candidates_found",
+                        candidate_disposition="threshold_met",
+                        reason=None,
                         candidates=[
                             SimpleNamespace(
                                 code="I10",
@@ -112,7 +115,7 @@ class DatasetBatchTests(SimpleTestCase):
                                 semantic_score=0.91,
                                 combined_score=0.96,
                             )
-                        ]
+                        ],
                     ),
                 )
             ]
@@ -148,6 +151,12 @@ class DatasetBatchTests(SimpleTestCase):
         self.assertEqual(result["new_records_processed"], 2)
         self.assertEqual([row["case_id"] for row in predictions], ["case-001", "case-002"])
         self.assertEqual(predictions[0]["items"][0]["decision"], "accepted")
+        self.assertEqual(predictions[0]["items"][0]["icd10_status"], "candidates_found")
+        self.assertEqual(
+            predictions[0]["items"][0]["icd10_candidate_disposition"],
+            "threshold_met",
+        )
+        self.assertEqual(predictions[0]["items"][0]["icd10_reason"], "")
         self.assertEqual(predictions[0]["items"][0]["icd10_candidates"], ["I10"])
         self.assertEqual(
             predictions[0]["items"][0]["icd10_candidate_details"],
