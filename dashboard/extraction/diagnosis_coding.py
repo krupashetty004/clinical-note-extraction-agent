@@ -19,19 +19,20 @@ from dashboard.extraction.schema import DiagnosisStatus, ExtractedItem
 from dashboard.extraction.service import validate_extraction_output
 
 
-# A candidate description that adds a clinical qualifier absent from the
-# diagnosis sentence must not be treated as a confident match.
-_CODE_SPECIFICITY_TERMS = frozenset({
-    "acute", "subacute", "chronic", "old", "paroxysmal", "permanent",
-    "persistent", "recurrent", "right", "left", "bilateral", "unilateral",
-    "cerebral", "retinal", "laryngeal", "larynx", "pulmonary", "renal",
-    "hepatic", "diabetic", "traumatic", "nontraumatic", "ischemic",
-    "hemorrhagic", "systolic", "diastolic", "severe", "mild", "moderate",
-    "obstructive", "generalized", "generalised", "alveolar",
-    "hypoventilation", "syncope", "rheumatic", "mixed",
-    "atherosclerotic", "native", "angina", "pectoris", "unstable",
-    "refractory", "with", "without",
+# These words describe a generic code title rather than a clinical subtype.
+# Keep "other" out: it is a classification qualifier and must be supported.
+_GENERIC_CODE_DESCRIPTOR_TERMS = frozenset({
+    "a", "an", "the", "of", "to", "due", "and", "or",
+    "disease", "disorder", "syndrome", "condition",
+    "unspecified", "organism",
 })
+
+# ICD-10-CM sometimes expresses the same documented concept with paired
+# descriptor terms. These equivalences are deliberately narrow.
+_CODE_DESCRIPTOR_EQUIVALENTS = {
+    "primary": frozenset({"essential"}),
+    "essential": frozenset({"primary"}),
+}
 
 
 def _sentence_context(note: str, start: int, end: int) -> str:
@@ -77,9 +78,24 @@ def _candidate_specificity_is_supported(
     description_tokens = set(
         re.findall(r"[a-z]+", candidate.description.casefold())
     )
+
+    # Do not accept a candidate merely because it shares one common word
+    # with the diagnosis. Every meaningful descriptor in the code title
+    # must be supported by the source sentence. This catches modifiers
+    # outside a hand-maintained list (for example, renovascular,
+    # susceptibility, typhoid, and dyskinesia).
     unsupported = (
-        description_tokens & _CODE_SPECIFICITY_TERMS
-    ) - context_tokens
+        description_tokens
+        - context_tokens
+        - _GENERIC_CODE_DESCRIPTOR_TERMS
+    )
+
+    # Preserve a narrowly documented terminology equivalence:
+    # "essential hypertension" may map to "essential (primary) hypertension".
+    for token in tuple(unsupported):
+        equivalents = _CODE_DESCRIPTOR_EQUIVALENTS.get(token, frozenset())
+        if equivalents & context_tokens:
+            unsupported.discard(token)
 
     if item.status == "historical":
         unsupported.discard("old")
