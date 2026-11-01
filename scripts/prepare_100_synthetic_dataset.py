@@ -922,6 +922,8 @@ def generate_100_records() -> list[dict[str, Any]]:
                 "review_method": "offline_source_text_audit",
                 "review_batch_count": 10,
                 "review_batch_size": 10,
+                "review_batch_number": ((idx - 1) // 10) + 1,
+                "review_batch_record_number": ((idx - 1) % 10) + 1,
                 "annotation_guidelines": "mirai-entity-taxonomy-v1",
                 "is_human_gold": False,
                 "clinical_review_status": "not_reviewed",
