@@ -122,6 +122,40 @@ class DiagnosisCodingIntegrationTests(TestCase):
             ["I4891"],
         )
 
+    def test_ranks_source_supported_ms_course_ahead_of_unspecified_candidate(self):
+        note = (
+            "History: Patient with relapsing-remitting multiple sclerosis "
+            "presents for follow-up."
+        )
+        payload = self.make_payload(
+            note,
+            entity="multiple sclerosis",
+            evidence="multiple sclerosis",
+        )
+
+        candidates = (
+            ICD10Candidate("G35D", "Multiple sclerosis, unspecified", 1.0),
+            ICD10Candidate("G35A", "Relapsing-remitting multiple sclerosis", 0.9),
+        )
+
+        with patch(
+            "dashboard.extraction.diagnosis_coding.search_hybrid_icd10",
+            return_value=ICD10LookupResult(
+                query="multiple sclerosis",
+                status="candidates_found",
+                candidates=candidates,
+            ),
+        ):
+            result = code_diagnoses(payload, note)
+
+        coding = result.diagnoses[0].coding
+        self.assertEqual(coding.status, "candidates_found")
+        self.assertEqual(coding.candidates[0].code, "G35A")
+        self.assertEqual(
+            [candidate.code for candidate in coding.candidates],
+            ["G35A", "G35D"],
+        )
+
     def test_abstains_when_all_candidates_add_unsupported_specificity(self):
         note = "Assessment: edema noted."
         payload = self.make_payload(
