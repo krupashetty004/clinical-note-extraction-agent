@@ -152,6 +152,11 @@ class SyntheticDatasetIntegrityTests(unittest.TestCase):
             / "annotation_template_100.jsonl"
         )
         self.assertFalse(legacy_template.exists())
+        gitignore = repository_root / ".gitignore"
+        self.assertIn(
+            "mirai_dataset_preparation_pack/data/external/mtsamples/annotations/*.jsonl",
+            gitignore.read_text(encoding="utf-8"),
+        )
 
 
 def _dataset_record_for_synthetic_input(row: dict[str, object]):
