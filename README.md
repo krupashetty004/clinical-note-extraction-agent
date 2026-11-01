@@ -179,7 +179,24 @@ Run:
 python scripts\\prepare_100_synthetic_dataset.py
 ```
 
-This creates 100 synthetic reference fixtures across 10 specialties (10 notes per specialty), plus a separate label-free input file, under the Git-ignored `.dataset_working/synthetic/\` directory. The fixture definitions have been reviewed in 10 batches against their note text for exact evidence spans, entity categories and statuses. The output remains labelled `synthetic_reference_fixture`, `adjudication_status=not_reviewed` and `clinical_performance_eligible=false`; it is not independent clinical gold.
+This creates 100 synthetic reference fixtures across 10 specialties (10 notes per specialty), plus a separate label-free input file, under the Git-ignored `.dataset_working/synthetic/\` directory.
+
+The ten review batches are:
+
+| Batch | Sample IDs | Specialty |
+|---|---|---|
+| 1 | 001–010 | Cardiology |
+| 2 | 011–020 | Neurology |
+| 3 | 021–030 | Pulmonology |
+| 4 | 031–040 | Endocrinology |
+| 5 | 041–050 | Gastroenterology |
+| 6 | 051–060 | Orthopedics |
+| 7 | 061–070 | Dermatology |
+| 8 | 071–080 | Family Medicine |
+| 9 | 081–090 | Oncology |
+| 10 | 091–100 | Internal Medicine |
+
+Each fixture records its review batch number and position within that batch. The fixture definitions have been reviewed in 10 batches against their note text for exact evidence spans, entity categories and statuses. The output remains labelled `synthetic_reference_fixture`, `adjudication_status=not_reviewed` and `clinical_performance_eligible=false`; it is not independent clinical gold.
 
 The legacy `evaluation.generate_ai_benchmark` command is disabled and makes no network requests. Do not run it for this workflow. The partial output from any earlier external pilot is not used as reference data.
 
