@@ -786,7 +786,7 @@ def generate_100_records() -> list[dict[str, Any]]:
         55: {"diags": [], "procs": ["arthroscopy", "rotator cuff repair", "physical therapy"]},
         58: {"meds": [("meloxicam", "current"), ("triamcinolone", "current"), ("lidocaine", "current")]},
         59: {"procs": ["cervical spine MRI", "physical therapy"]},
-        60: {"meds": [("calcium", "current"), ("vitamin D", "current")], "procs": ["x-ray", "cast removed"]},
+        60: {"meds": [("calcium", "current"), ("vitamin D", "current")], "procs": ["cast removed", "physical therapy"]},
 
         # Dermatology (61-70)
         61: {"procs": []},
@@ -802,7 +802,7 @@ def generate_100_records() -> list[dict[str, Any]]:
             "meds": [("cyclophosphamide", "current"), ("doxorubicin", "current"), ("ondansetron", "current")],
             "procs": ["lumpectomy", "sentinel lymph node biopsy", "radiation therapy"],
         },
-        85: {"procs": ["liver function panels", "thyroid function panels"]},
+        85: {"procs": ["liver and thyroid function panels"]},
         86: {
             "diags": [("pancreatic cancer", "active", None), ("abdominal pain", "active", "R109")],
             "meds": [("morphine", "current"), ("senna", "current"), ("ondansetron", "newly_prescribed")],
