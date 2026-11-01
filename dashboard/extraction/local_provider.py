@@ -222,18 +222,26 @@ class LocalClinicalExtractionProvider:
                         default=len(text_lower),
                     )
                     window = text_lower[context_start:context_end]
-                    preceding_context = text_lower[max(context_start, idx - 50):idx]
-                    historical_context = preceding_context.replace(
-                        "history of present illness", ""
+                    # Strip a section heading before interpreting mention status.
+                    # "PAST HISTORY:" describes the note section; it does not by
+                    # itself establish that every chronic condition is inactive.
+                    line_prefix = text_lower[context_start:idx]
+                    line_prefix = re.sub(
+                        r"^\s*(?:past\s+medical\s+history|past\s+history|"
+                        r"medical\s+history|history|pmh)\s*:\s*",
+                        "",
+                        line_prefix,
                     )
+                    preceding_context = line_prefix[-50:]
                     status = None
 
                     if category == "diagnosis":
                         following_context = text_lower[end:context_end]
 
                         negated_before = re.search(
-                            r"\b(?:no(?:\s+evidence\s+of)?|denies?|denied|"
-                            r"negative\s+for|without|absence\s+of|ruled\s+out|not)\s*$",
+                            r"\b(?:no(?:\s+(?:evidence\s+of|recurrent|known))?|"
+                            r"denies?|denied|negative\s+for|without|absence\s+of|"
+                            r"ruled\s+out|not)\s*$",
                             preceding_context,
                         )
                         negated_after = re.match(
@@ -252,6 +260,9 @@ class LocalClinicalExtractionProvider:
                                 "suspected",
                                 "question of",
                                 "concern for",
+                                "high suspicion for",
+                                "suspicion of",
+                                "suspicion for",
                             ]
                         )
                         suspected_after = re.match(
@@ -261,19 +272,30 @@ class LocalClinicalExtractionProvider:
                             following_context,
                         )
 
+                        historical_mention = any(
+                            cue in preceding_context
+                            for cue in [
+                                "history of",
+                                "hx of",
+                                "prior",
+                                "previously",
+                                "previous",
+                                "remote",
+                                "status post",
+                                "in remission",
+                            ]
+                        )
+                        current_state = bool(re.search(
+                            r"\b(?:well[- ]controlled|controlled|stable|compensated|"
+                            r"currently active|ongoing)\b",
+                            window,
+                        ))
+
                         if negated_before or negated_after:
                             status = "ruled_out"
                         elif suspected_before or suspected_after:
                             status = "suspected"
-                        elif any(
-                            cue in historical_context
-                            for cue in [
-                                "history of",
-                                "hx of",
-                                "past history",
-                                "prior",
-                            ]
-                        ):
+                        elif historical_mention and not current_state:
                             status = "historical"
                         else:
                             status = "active"
