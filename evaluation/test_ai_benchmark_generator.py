@@ -19,6 +19,7 @@ from evaluation.generate_ai_benchmark import (
     is_synthetic_record,
     _safe_failure_diagnostics,
     validate_annotation_payload,
+    main as generate_ai_benchmark_main,
 )
 
 
@@ -191,6 +192,18 @@ class AIBenchmarkGeneratorTests(unittest.TestCase):
         self.assertEqual(detail["failure_phase"], "provider_request")
         self.assertEqual(detail["error_code"], "provider_failed")
         self.assertNotIn("Groq request failed", str(detail))
+
+    def test_annotation_cli_is_disabled_without_provider_calls(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+
+        output = StringIO()
+        with redirect_stdout(output):
+            result = generate_ai_benchmark_main(["--limit", "5"])
+
+        self.assertEqual(result, 2)
+        self.assertIn("External API annotation is disabled", output.getvalue())
+        self.assertIn("No network request was made", output.getvalue())
 
     def test_source_gate_requires_matching_local_synthetic_provenance(self):
         self.assertTrue(is_synthetic_record(self.record))
