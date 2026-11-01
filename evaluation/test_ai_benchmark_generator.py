@@ -80,7 +80,10 @@ class AIBenchmarkGeneratorTests(unittest.TestCase):
             annotated_at_utc=datetime(2026, 1, 1, tzinfo=timezone.utc).isoformat(),
         )
         self.assertEqual(case["case_id"], "SYN-001")
-        self.assertEqual(case["gold_items"][0]["icd10_code"], "E11.9")
+        self.assertNotIn("icd10_code", case["gold_items"][0])
+        self.assertNotIn("icd10_description", case["gold_items"][0])
+        self.assertEqual(case["icd10_coding_status"], "deferred_reference_lookup")
+        self.assertEqual(case["annotation_version"], "mirai-ai-benchmark-v2")
         self.assertEqual(case["model_provider"], "groq")
         self.assertEqual(case["model_id"], "synthetic-test-model")
         self.assertEqual(case["label_source"], "ai_model")
@@ -118,6 +121,31 @@ class AIBenchmarkGeneratorTests(unittest.TestCase):
         self.assertTrue(needs_review)
         self.assertEqual(reasons, ["Unclear note"])
 
+    def test_model_proposed_icd_codes_are_discarded_until_reference_retrieval(self):
+        from evaluation.generate_ai_benchmark import build_benchmark_case
+
+        payload_with_model_code = {
+            **self.payload,
+            "items": [
+                {
+                    **self.payload["items"][0],
+                    "icd10_code": "Z99.99",
+                    "icd10_description": "Invented code description",
+                },
+                self.payload["items"][1],
+            ],
+        }
+        case = build_benchmark_case(
+            self.record,
+            payload_with_model_code,
+            model_provider="groq",
+            model_id="synthetic-test-model",
+        )
+        diagnosis = next(item for item in case["gold_items"] if item["category"] == "diagnosis")
+        self.assertNotIn("icd10_code", diagnosis)
+        self.assertNotIn("icd10_description", diagnosis)
+        self.assertEqual(case["icd10_coding_status"], "deferred_reference_lookup")
+
     def test_queue_output_keeps_ai_labelled_data_separate_from_clinical_gold(self):
         case = build_benchmark_case(
             self.record, self.payload, model_provider="groq", model_id="synthetic-test-model"
@@ -129,7 +157,8 @@ class AIBenchmarkGeneratorTests(unittest.TestCase):
         self.assertFalse(queue_record["clinical_performance_eligible"])
         self.assertEqual(len(queue_record["gold_annotations"]["diagnoses"]), 1)
         self.assertEqual(len(queue_record["gold_annotations"]["medications"]), 1)
-        self.assertEqual(queue_record["gold_annotations"]["icd10_cm_codes"][0]["code"], "E11.9")
+        self.assertEqual(queue_record["gold_annotations"]["icd10_cm_codes"], [])
+        self.assertEqual(queue_record["icd10_coding_status"], "deferred_reference_lookup")
         self.assertEqual(queue_record["adjudication_status"], "not_reviewed")
 
     def test_queue_record_is_recognized_as_ai_benchmark_not_clinical_gold(self):
@@ -163,7 +192,7 @@ class AIBenchmarkGeneratorTests(unittest.TestCase):
         self.assertEqual(detail["error_code"], "provider_failed")
         self.assertNotIn("Groq request failed", str(detail))
 
-    def test_source_gate_allows_only_explicit_synthetic_names(self):
+    def test_source_gate_requires_matching_local_synthetic_provenance(self):
         self.assertTrue(is_synthetic_record(self.record))
         external = DatasetRecord(
             record_id="EXT-1", source_dataset="kaggle:medicaltranscriptions",
@@ -171,6 +200,13 @@ class AIBenchmarkGeneratorTests(unittest.TestCase):
             specialty="Surgery", note_text="note", metadata={},
         )
         self.assertFalse(is_synthetic_record(external))
+
+        mislabeled_external = DatasetRecord(
+            record_id="EXT-2", source_dataset="synthetic:mirai-stage3",
+            source_url="https://example.test/clinical-notes.csv",
+            source_row_number=2, specialty="Surgery", note_text="note", metadata={},
+        )
+        self.assertFalse(is_synthetic_record(mislabeled_external))
 
 
 if __name__ == "__main__":
