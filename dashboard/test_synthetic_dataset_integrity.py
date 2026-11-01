@@ -136,6 +136,19 @@ class SyntheticDatasetIntegrityTests(unittest.TestCase):
         self.assertEqual(DEFAULT_CASES_PATH, Path(".dataset_working/ai_benchmark/cases.jsonl"))
         self.assertEqual(DEFAULT_QUEUE_PATH, Path(".dataset_working/ai_benchmark/annotations.jsonl"))
 
+    def test_legacy_note_level_annotation_template_is_not_tracked(self) -> None:
+        repository_root = Path(__file__).resolve().parents[1]
+        legacy_template = (
+            repository_root
+            / "mirai_dataset_preparation_pack"
+            / "data"
+            / "external"
+            / "mtsamples"
+            / "annotations"
+            / "annotation_template_100.jsonl"
+        )
+        self.assertFalse(legacy_template.exists())
+
 
 def _dataset_record_for_synthetic_input(row: dict[str, object]):
     """Construct the minimal immutable record expected by the source gate."""
