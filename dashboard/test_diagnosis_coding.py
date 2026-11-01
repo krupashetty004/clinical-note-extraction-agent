@@ -278,6 +278,32 @@ class DiagnosisCodingIntegrationTests(TestCase):
         )
         self.assertIn("specificity", coding.reason)
 
+    def test_keeps_paroxysmal_candidate_when_note_documents_paroxysmal_af(self):
+        note = "Assessment: Paroxysmal atrial fibrillation is stable."
+        payload = self.make_payload(
+            note,
+            entity="atrial fibrillation",
+            evidence="atrial fibrillation",
+        )
+        candidates = (
+            ICD10Candidate("I480", "Paroxysmal atrial fibrillation", 1.0),
+            ICD10Candidate("I4891", "Unspecified atrial fibrillation", 0.9),
+        )
+
+        with patch(
+            "dashboard.extraction.diagnosis_coding.search_hybrid_icd10",
+            return_value=ICD10LookupResult(
+                query="atrial fibrillation",
+                status="candidates_found",
+                candidates=candidates,
+            ),
+        ):
+            result = code_diagnoses(payload, note)
+
+        coding = result.diagnoses[0].coding
+        self.assertEqual(coding.status, "candidates_found")
+        self.assertEqual(coding.candidates[0].code, "I480")
+
     def test_preserves_historical_status(self):
         note = (
             "History: Type 2 diabetes mellitus without complications."
