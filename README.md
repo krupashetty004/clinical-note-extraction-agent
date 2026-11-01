@@ -141,7 +141,7 @@ The Doctor annotation workspace loads the locally prepared queue when it exists 
 
 ### Process the prepared dataset through the clinical agent
 
-First check that the local ICD-10-CM table is populated. On a fresh local database, import the repository's reference file once:
+First check that the local ICD-10-CM table is populated. **The checked-in `data/reference/icd10cm-codes-2027.txt` is currently empty on this branch**, so importing it will not provide coding candidates. Supply the approved ICD-10-CM reference data before evaluating diagnosis coding. On a fresh local database, import the populated reference file once:
 
 ```powershell
 python manage.py import_icd10 --source data\\reference\\icd10cm-codes-2027.txt --apply
