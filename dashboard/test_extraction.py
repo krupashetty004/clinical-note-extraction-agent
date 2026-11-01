@@ -325,6 +325,56 @@ class ExtractionSchemaTests(SimpleTestCase):
                     validate_item_status_context(item, note)
                 )
 
+    def test_accepts_historical_status_from_past_history_heading(self):
+        note = "PAST HISTORY: hypertension for 10 years."
+        item = self.make_item(
+            note,
+            "hypertension",
+            entity="hypertension",
+            status="historical",
+        )
+        self.assertIsNone(validate_item_status_context(item, note))
+
+    def test_current_controlled_status_overrides_historical_phrase(self):
+        note = "History of hypertension, well-controlled."
+        item = self.make_item(
+            note,
+            "hypertension",
+            entity="hypertension",
+            status="active",
+        )
+        self.assertIsNone(validate_item_status_context(item, note))
+
+    def test_accepts_status_post_as_historical_context(self):
+        note = "Status post myocardial infarction six months ago."
+        item = self.make_item(
+            note,
+            "myocardial infarction",
+            entity="myocardial infarction",
+            status="historical",
+        )
+        self.assertIsNone(validate_item_status_context(item, note))
+
+    def test_accepts_no_recurrent_as_negation_context(self):
+        note = "No recurrent angina pectoris."
+        item = self.make_item(
+            note,
+            "angina pectoris",
+            entity="angina pectoris",
+            status="ruled_out",
+        )
+        self.assertIsNone(validate_item_status_context(item, note))
+
+    def test_accepts_high_suspicion_for_as_uncertainty_context(self):
+        note = "High suspicion for obstructive sleep apnea."
+        item = self.make_item(
+            note,
+            "sleep apnea",
+            entity="sleep apnea",
+            status="suspected",
+        )
+        self.assertIsNone(validate_item_status_context(item, note))
+
     def test_does_not_mix_semicolon_separated_historical_and_current_context(self):
         note = "History of diabetes; current diabetes."
         evidence = "current diabetes"
