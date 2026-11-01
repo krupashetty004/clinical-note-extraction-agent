@@ -1,6 +1,7 @@
 """Connect validated diagnosis mentions to hybrid ICD-10 retrieval."""
 
 from typing import cast
+import re
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
 
@@ -18,6 +19,130 @@ from dashboard.extraction.service import validate_extraction_output
 
 
 class CodedDiagnosisMention(BaseModel):
+
+# A candidate description that adds a clinical qualifier absent from the
+# diagnosis sentence must not be treated as a confident match.
+_CODE_SPECIFICITY_TERMS = frozenset({
+    "acute", "subacute", "chronic", "old", "paroxysmal", "permanent",
+    "persistent", "recurrent", "right", "left", "bilateral", "unilateral",
+    "cerebral", "retinal", "laryngeal", "pulmonary", "renal", "hepatic",
+    "diabetic", "traumatic", "nontraumatic", "ischemic", "hemorrhagic",
+    "systolic", "diastolic", "severe", "mild", "moderate", "obstructive",
+    "generalized", "generalised", "alveolar", "hypoventilation", "syncope",
+})
+
+
+def _sentence_context(note: str, start: int, end: int) -> str:
+    """Return the sentence containing a diagnosis mention."""
+    left = max(
+        note.rfind(".", 0, start),
+        note.rfind("!", 0, start),
+        note.rfind("?", 0, start),
+        note.rfind(";", 0, start),
+        note.rfind("\\n", 0, start),
+    )
+    right_candidates = [
+        position
+        for position in (
+            note.find(".", end),
+            note.find("!", end),
+            note.find("?", end),
+            note.find(";", end),
+            note.find("\\n", end),
+        )
+        if position >= 0
+    ]
+    right = min(right_candidates, default=len(note))
+    return note[left + 1:right + 1].casefold()
+
+
+def _candidate_specificity_is_supported(candidate, item, original_note: str) -> bool:
+    """Reject a candidate if its controlled qualifiers are absent from context.
+
+    Historical mention status supports the descriptor "old". This check is
+    deliberately conservative: it does not infer clinical synonyms.
+    """
+    context = _sentence_context(
+        original_note,
+        item.start_offset,
+        item.end_offset,
+    )
+    context_tokens = set(re.findall(r"[a-z]+", context))
+    description_tokens = set(
+        re.findall(r"[a-z]+", candidate.description.casefold())
+    )
+    unsupported = (
+        description_tokens & _CODE_SPECIFICITY_TERMS
+    ) - context_tokens
+
+    if item.status == "historical":
+        unsupported.discard("old")
+
+    return not unsupported
+
+
+def _apply_specificity_guard(
+    lookup: ICD10LookupResult,
+    item,
+    original_note: str,
+    *,
+    limit: int,
+    minimum_lexical_score: float,
+    minimum_semantic_score: float,
+) -> ICD10LookupResult:
+    """Keep only candidates whose explicit qualifiers are source-supported."""
+    if not lookup.candidates:
+        return lookup
+
+    supported = tuple(
+        candidate
+        for candidate in lookup.candidates
+        if _candidate_specificity_is_supported(
+            candidate,
+            item,
+            original_note,
+        )
+    )
+
+    if not supported:
+        return ICD10LookupResult(
+            query=lookup.query,
+            status="no_confident_match",
+            candidates=tuple(lookup.candidates[:limit]),
+            reason=(
+                "Candidate descriptions add clinical specificity that is "
+                "not supported by the diagnosis sentence. Manual review is required."
+            ),
+        )
+
+    qualifying = tuple(
+        candidate
+        for candidate in supported
+        if (
+            candidate.lexical_score >= minimum_lexical_score
+            or (
+                candidate.semantic_score is not None
+                and candidate.semantic_score >= minimum_semantic_score
+            )
+    )
+
+    if lookup.status == "candidates_found" and qualifying:
+        return ICD10LookupResult(
+            query=lookup.query,
+            status="candidates_found",
+            candidates=qualifying[:limit],
+        )
+
+    return ICD10LookupResult(
+        query=lookup.query,
+        status="no_confident_match",
+        candidates=supported[:limit],
+        reason=(
+            lookup.reason
+            or "No context-supported candidate met the configured retrieval threshold."
+        ),
+    )
+
     """A diagnosis mention paired with candidates, not a confirmed code."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -73,8 +198,19 @@ def code_diagnoses(
                 ),
             )
         else:
+            # Retrieve a wider pool so unsupported specific candidates do not
+            # hide a lower-ranked generic or context-compatible alternative.
+            pool_limit = min(20, max(limit * 4, limit))
             lookup = search_hybrid_icd10(
                 item.entity,
+                limit=pool_limit,
+                minimum_lexical_score=minimum_lexical_score,
+                minimum_semantic_score=minimum_semantic_score,
+            )
+            lookup = _apply_specificity_guard(
+                lookup,
+                item,
+                original_note,
                 limit=limit,
                 minimum_lexical_score=minimum_lexical_score,
                 minimum_semantic_score=minimum_semantic_score,
