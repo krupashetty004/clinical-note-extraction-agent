@@ -25,7 +25,8 @@ from dashboard.extraction.dataset import (
     load_jsonl,
 )
 
-ANNOTATION_VERSION = "mirai-ai-benchmark-v1"
+ANNOTATION_VERSION = "mirai-ai-benchmark-v2"
+ICD10_CODING_STATUS = "deferred_reference_lookup"
 ENTITY_CATEGORIES = {"diagnosis", "medication", "procedure", "allergy", "vital_sign"}
 DIAGNOSIS_STATUSES = {"active", "historical", "ruled_out", "suspected"}
 MEDICATION_STATUSES = {"current", "discontinued", "newly_prescribed"}
@@ -42,9 +43,34 @@ DEFAULT_QUEUE_PATH = Path(".dataset_working/ai_benchmark/annotations.jsonl")
 
 
 def is_synthetic_record(record: DatasetRecord) -> bool:
-    """Only known explicitly synthetic/local-test sources bypass the approval gate."""
-    value = record.source_dataset.strip().casefold()
-    return value.startswith(("synthetic:", "local:synthetic", "local:test"))
+    """Require both a synthetic source identifier and a local-only source URI."""
+    source = record.source_dataset.strip().casefold()
+    source_url = record.source_url.strip().casefold()
+    if source.startswith(("synthetic:", "local:synthetic")):
+        return source_url == "local://synthetic"
+    if source.startswith("local:test"):
+        return source_url in {"local://test", "local://synthetic"}
+    return False
+
+
+def _without_unverified_icd10_codes(payload: object) -> object:
+    """Discard model-proposed codes; coding must come from the reference lookup."""
+    if not isinstance(payload, dict):
+        return payload
+    sanitized = dict(payload)
+    raw_items = payload.get("items")
+    if isinstance(raw_items, list):
+        sanitized_items: list[Any] = []
+        for raw_item in raw_items:
+            if isinstance(raw_item, dict):
+                item = dict(raw_item)
+                item.pop("icd10_code", None)
+                item.pop("icd10_description", None)
+                sanitized_items.append(item)
+            else:
+                sanitized_items.append(raw_item)
+        sanitized["items"] = sanitized_items
+    return sanitized
 
 
 def validate_annotation_payload(note: str, payload: object) -> tuple[list[dict[str, Any]], bool, list[str]]:
@@ -137,7 +163,11 @@ def build_benchmark_case(
     model_id: str,
     annotated_at_utc: str | None = None,
 ) -> dict[str, Any]:
-    items, needs_review, review_reasons = validate_annotation_payload(record.note_text, payload)
+    # A generative model is not the ICD-10-CM terminology source. Until the
+    # reference-table retrieval stage is available, never preserve model codes.
+    items, needs_review, review_reasons = validate_annotation_payload(
+        record.note_text, _without_unverified_icd10_codes(payload)
+    )
     if not model_provider.strip() or not model_id.strip():
         raise ValueError("model provider and model ID are required for provenance")
     return {
@@ -148,6 +178,7 @@ def build_benchmark_case(
         "review_reasons": review_reasons,
         "label_source": "ai_model",
         "clinical_performance_eligible": False,
+        "icd10_coding_status": ICD10_CODING_STATUS,
         "model_provider": model_provider,
         "model_id": model_id,
         "annotation_version": ANNOTATION_VERSION,
@@ -188,6 +219,7 @@ def benchmark_case_to_queue_record(record: DatasetRecord, case: Mapping[str, Any
         "expected_needs_review": case["expected_needs_review"],
         "label_source": "ai_model",
         "clinical_performance_eligible": False,
+        "icd10_coding_status": case["icd10_coding_status"],
         "model_provider": case["model_provider"],
         "model_id": case["model_id"],
         "annotation_version": case["annotation_version"],
@@ -276,6 +308,13 @@ def _load_existing_cases(path: Path, records_by_id: Mapping[str, DatasetRecord])
         if (
             case.get("label_source") != "ai_model"
             or case.get("clinical_performance_eligible") is not False
+            or case.get("annotation_version") != ANNOTATION_VERSION
+            or case.get("icd10_coding_status") != ICD10_CODING_STATUS
+            or any(
+                "icd10_code" in item or "icd10_description" in item
+                for item in case.get("gold_items", [])
+                if isinstance(item, dict)
+            )
             or not isinstance(case.get("model_provider"), str)
             or not isinstance(case.get("model_id"), str)
         ):
