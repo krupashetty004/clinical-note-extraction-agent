@@ -140,6 +140,39 @@ class TestLocalClinicalExtractionProvider(PureTestCase):
         self.assertIsNotNone(diag)
         self.assertEqual(diag["status"], "ruled_out")
 
+    def test_diagnosis_ruled_out_when_negation_follows_mention(self):
+        note = (
+            "Assessment: Myocardial infarction "
+            "ruled out on recent telemetry."
+        )
+        result = self.provider.extract(note)
+
+        diag = next(
+            (
+                item for item in result["items"]
+                if item["entity"].casefold() == "myocardial infarction"
+            ),
+            None,
+        )
+
+        self.assertIsNotNone(diag)
+        self.assertEqual(diag["status"], "ruled_out")
+
+    def test_diagnosis_no_prefix_is_ruled_out(self):
+        note = "Assessment: No myocardial infarction was identified."
+        result = self.provider.extract(note)
+
+        diag = next(
+            (
+                item for item in result["items"]
+                if item["entity"].casefold() == "myocardial infarction"
+            ),
+            None,
+        )
+
+        self.assertIsNotNone(diag)
+        self.assertEqual(diag["status"], "ruled_out")
+
     def test_diagnosis_suspected_status(self):
         note = "Possible hypertension; pending further workup."
         result = self.provider.extract(note)
