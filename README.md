@@ -171,28 +171,17 @@ Resume an interrupted batch with `--resume`; deliberately replace outputs with `
 
 The repository contains synthetic smoke tests, challenge observations and measured synthetic benchmark tooling. Their results are not interchangeable with independent clinical gold-standard evaluation.
 
-For a separate synthetic-only annotation pilot, run:
+For the 100 synthetic samples, annotation is **offline-only**. No Groq key or external AI API is used.
+
+Run:
 
 ```powershell
 python scripts\\prepare_100_synthetic_dataset.py
-
-$env:DJANGO_DEBUG = "1"
-$env:MIRAI_ENABLE_GROQ_PROVIDER = "1"
-$secureKey = Read-Host "Groq API key" -AsSecureString
-$env:GROQ_API_KEY = [System.Net.NetworkCredential]::new("", $secureKey).Password
-
-python -m evaluation.generate_ai_benchmark --limit 5
-
-# Only after inspecting the 5-note pilot:
-python -m evaluation.generate_ai_benchmark --limit 100 --resume
-
-Remove the local provider configuration after the run:
-Remove-Item Env:\\MIRAI_ENABLE_GROQ_PROVIDER
-Remove-Item Env:\\GROQ_API_KEY
-Remove-Item Env:\\DJANGO_DEBUG
 ```
 
-The generator writes deterministic reference fixtures and a separate label-free AI input file under the Git-ignored `.dataset_working/\` directory. The five-note run is the required pilot; inspect evidence spans, category assignments, statuses and review flags before running the remaining notes. AI output is stored separately with `label_source=ai_model`, `clinical_performance_eligible=false` and `adjudication_status=not_reviewed`; it is not clinical gold. Model-proposed ICD-10 codes are discarded until reference-table retrieval is implemented. Non-synthetic records remain blocked; do not enable external clinical processing for this prototype.
+This creates 100 synthetic reference fixtures across 10 specialties (10 notes per specialty), plus a separate label-free input file, under the Git-ignored `.dataset_working/synthetic/\` directory. The fixture definitions have been reviewed in 10 batches against their note text for exact evidence spans, entity categories and statuses. The output remains labelled `synthetic_reference_fixture`, `adjudication_status=not_reviewed` and `clinical_performance_eligible=false`; it is not independent clinical gold.
+
+The legacy `evaluation.generate_ai_benchmark` command is disabled and makes no network requests. Do not run it for this workflow. The partial output from any earlier external pilot is not used as reference data.
 
 Do not use the legacy generated scorecard as proof that the original acceptance targets have been met. The MTSamples source does not provide note-level gold entity spans, assertion labels, or validated ICD-10-CM labels. It therefore cannot independently establish diagnosis/medication F1, evidence faithfulness, status accuracy or coding accuracy without suitable validated annotations.
 
