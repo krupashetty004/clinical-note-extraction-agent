@@ -28,7 +28,9 @@ _CODE_SPECIFICITY_TERMS = frozenset({
     "hepatic", "diabetic", "traumatic", "nontraumatic", "ischemic",
     "hemorrhagic", "systolic", "diastolic", "severe", "mild", "moderate",
     "obstructive", "generalized", "generalised", "alveolar",
-    "hypoventilation", "syncope",
+    "hypoventilation", "syncope", "rheumatic", "mixed",
+    "atherosclerotic", "native", "angina", "pectoris", "unstable",
+    "refractory", "with", "without",
 })
 
 
