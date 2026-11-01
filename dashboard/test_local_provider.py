@@ -216,6 +216,60 @@ class TestLocalClinicalExtractionProvider(PureTestCase):
         )
         self.assertIsNotNone(diag)
         self.assertEqual(diag["status"], "suspected")
+    def test_past_history_section_heading_does_not_force_historical(self):
+        note = "PAST HISTORY: Hypertension for 10 years."
+        result = self.provider.extract(note)
+        diagnosis = next(
+            item for item in result["items"]
+            if item["category"] == "diagnosis"
+            and item["entity"].casefold() == "hypertension"
+        )
+        self.assertEqual(diagnosis["status"], "active")
+
+    def test_well_controlled_condition_with_history_phrase_is_active(self):
+        note = (
+            "HISTORY: History of hypertension and atrial fibrillation, "
+            "well-controlled."
+        )
+        result = self.provider.extract(note)
+        diagnoses = {
+            item["entity"].casefold(): item["status"]
+            for item in result["items"]
+            if item["category"] == "diagnosis"
+        }
+        self.assertEqual(diagnoses["hypertension"], "active")
+        self.assertEqual(diagnoses["atrial fibrillation"], "active")
+
+    def test_status_post_diagnosis_is_historical(self):
+        note = "Patient is status post acute myocardial infarction six months ago."
+        result = self.provider.extract(note)
+        diagnosis = next(
+            item for item in result["items"]
+            if item["category"] == "diagnosis"
+            and item["entity"].casefold() == "myocardial infarction"
+        )
+        self.assertEqual(diagnosis["status"], "historical")
+
+    def test_no_recurrent_diagnosis_is_ruled_out(self):
+        note = "No recurrent angina pectoris."
+        result = self.provider.extract(note)
+        diagnosis = next(
+            item for item in result["items"]
+            if item["category"] == "diagnosis"
+            and item["entity"].casefold() == "angina pectoris"
+        )
+        self.assertEqual(diagnosis["status"], "ruled_out")
+
+    def test_high_suspicion_for_diagnosis_is_suspected(self):
+        note = "High suspicion for obstructive sleep apnea."
+        result = self.provider.extract(note)
+        diagnosis = next(
+            item for item in result["items"]
+            if item["category"] == "diagnosis"
+            and item["entity"].casefold() == "sleep apnea"
+        )
+        self.assertEqual(diagnosis["status"], "suspected")
+
     def test_extracts_suspected_musculoskeletal_injury(self):
         note = "Assessment: Possible musculoskeletal injury causing chest pain."
 
