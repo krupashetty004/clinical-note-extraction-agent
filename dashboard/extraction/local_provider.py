@@ -232,14 +232,14 @@ class LocalClinicalExtractionProvider:
                         following_context = text_lower[end:context_end]
 
                         negated_before = re.search(
-                            r"\\b(?:no(?:\\s+evidence\\s+of)?|denies?|denied|"
-                            r"negative\\s+for|without|absence\\s+of|ruled\\s+out|not)\\s*$",
+                            r"\b(?:no(?:\s+evidence\s+of)?|denies?|denied|"
+                            r"negative\s+for|without|absence\s+of|ruled\s+out|not)\s*$",
                             preceding_context,
                         )
                         negated_after = re.match(
-                            r"^\\s*,?\\s*(?:(?:which|that)\\s+)?"
-                            r"(?:(?:is|was|has been|had been)\\s+)?"
-                            r"(?:ruled\\s+out|excluded|not present|negative for)\\b",
+                            r"^\s*,?\s*(?:(?:which|that)\s+)?"
+                            r"(?:(?:is|was|has been|had been)\s+)?"
+                            r"(?:ruled\s+out|excluded|not present|negative for)\b",
                             following_context,
                         )
 
@@ -255,9 +255,9 @@ class LocalClinicalExtractionProvider:
                             ]
                         )
                         suspected_after = re.match(
-                            r"^\\s*,?\\s*(?:(?:which|that)\\s+)?"
-                            r"(?:(?:is|was|has been|had been)\\s+)?"
-                            r"(?:possible|probable|suspected|not excluded)\\b",
+                            r"^\s*,?\s*(?:(?:which|that)\s+)?"
+                            r"(?:(?:is|was|has been|had been)\s+)?"
+                            r"(?:possible|probable|suspected|not excluded)\b",
                             following_context,
                         )
 
