@@ -624,7 +624,7 @@ def generate_100_records() -> list[dict[str, Any]]:
 
     corrections = {
         7: {'meds': [('hydrochlorothiazide', 'newly_prescribed'), ('labetalol', 'newly_prescribed')], 'procs': []},
-        10: {'meds': [('metoprolol', 'current'), ('nitroglycerin', 'newly_prescribed')], 'procs': []},
+        10: {'meds': [('isosorbide mononitrate', 'current'), ('metoprolol', 'current'), ('nitroglycerin', 'newly_prescribed')], 'procs': []},
         12: {'procs': ['levetiracetam trough level']},
         18: {'procs': []},
         20: {'meds': [('acetaminophen', 'discontinued'), ('ubrogepant', 'newly_prescribed'), ('CGRP antagonist', 'newly_prescribed')], 'procs': []},
