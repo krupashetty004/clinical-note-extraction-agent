@@ -59,31 +59,56 @@ def _sentence_context(note: str, start: int, end: int) -> str:
     return note[left + 1:right + 1].casefold()
 
 
-def _candidate_context_specificity_score(
-    candidate: ICD10Candidate,
+def _diagnosis_retrieval_query(
     item: ExtractedItem,
     original_note: str,
-) -> int:
-    """Count candidate-specific descriptor tokens explicitly stated nearby.
+) -> str:
+    """Include one explicit local subtype modifier in the ICD search query.
 
-    Tokens already present in the diagnosis mention and generic code-title
-    terms do not add specificity. The score is a deterministic tie-breaker,
-    not a probability or a replacement for the specificity guard.
+    Only a small allowlist of clinical modifiers immediately preceding the
+    extracted diagnosis is eligible. This avoids pulling unrelated words
+    from the whole sentence into lexical retrieval.
     """
+    contextual_descriptors = {
+        "acute",
+        "chronic",
+        "subacute",
+        "recurrent",
+        "paroxysmal",
+        "persistent",
+        "permanent",
+        "relapsing-remitting",
+        "primary",
+        "secondary",
+        "essential",
+        "resistant",
+        "benign",
+        "malignant",
+        "idiopathic",
+        "congenital",
+    }
     context = _sentence_context(
         original_note,
         item.start_offset,
         item.end_offset,
     )
-    context_tokens = set(re.findall(r"[a-z]+", context))
-    mention_tokens = set(re.findall(r"[a-z]+", item.entity.casefold()))
-    description_tokens = set(
-        re.findall(r"[a-z]+", candidate.description.casefold())
+    entity_start = context.casefold().find(item.entity.casefold())
+    if entity_start <= 0:
+        return item.entity
+
+    prefix_tokens = re.findall(
+        r"[a-z]+(?:-[a-z]+)*",
+        context[:entity_start].casefold(),
     )
-    candidate_modifiers = (
-        description_tokens - mention_tokens - _GENERIC_CODE_DESCRIPTOR_TERMS
+    modifier = next(
+        (
+            token
+            for token in reversed(prefix_tokens[-5:])
+            if token in contextual_descriptors
+        ),
+        None,
     )
-    return len(candidate_modifiers & context_tokens)
+    return f"{modifier} {item.entity}" if modifier else item.entity
 
 
 def _candidate_specificity_is_supported(
@@ -176,23 +201,6 @@ def _apply_specificity_guard(
         )
     )
 
-    if qualifying:
-        original_positions = {
-            candidate.code: index
-            for index, candidate in enumerate(lookup.candidates)
-        }
-        qualifying = tuple(sorted(
-            qualifying,
-            key=lambda candidate: (
-                -_candidate_context_specificity_score(
-                    candidate,
-                    item,
-                    original_note,
-                ),
-                original_positions[candidate.code],
-            ),
-        ))
-
     if lookup.status == "candidates_found" and qualifying:
         return ICD10LookupResult(
             query=lookup.query,
@@ -270,8 +278,12 @@ def code_diagnoses(
             # Retrieve a wider pool so unsupported specific candidates do not
             # hide a lower-ranked generic or context-compatible alternative.
             pool_limit = min(20, max(limit * 4, limit))
+            retrieval_query = _diagnosis_retrieval_query(
+                item,
+                original_note,
+            )
             lookup = search_hybrid_icd10(
-                item.entity,
+                retrieval_query,
                 limit=pool_limit,
                 minimum_lexical_score=minimum_lexical_score,
                 minimum_semantic_score=minimum_semantic_score,
