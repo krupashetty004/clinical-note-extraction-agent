@@ -222,17 +222,7 @@ class LocalClinicalExtractionProvider:
                         default=len(text_lower),
                     )
                     window = text_lower[context_start:context_end]
-                    # Strip a section heading before interpreting mention status.
-                    # "PAST HISTORY:" describes the note section; it does not by
-                    # itself establish that every chronic condition is inactive.
-                    line_prefix = text_lower[context_start:idx]
-                    line_prefix = re.sub(
-                        r"^\s*(?:past\s+medical\s+history|past\s+history|"
-                        r"medical\s+history|history|pmh)\s*:\s*",
-                        "",
-                        line_prefix,
-                    )
-                    preceding_context = line_prefix[-50:]
+                    preceding_context = text_lower[max(context_start, idx - 50):idx]
                     status = None
 
                     if category == "diagnosis":
@@ -276,6 +266,8 @@ class LocalClinicalExtractionProvider:
                             cue in preceding_context
                             for cue in [
                                 "history of",
+                                "past medical history",
+                                "past history",
                                 "hx of",
                                 "prior",
                                 "previously",
@@ -286,8 +278,10 @@ class LocalClinicalExtractionProvider:
                             ]
                         )
                         current_state = bool(re.search(
-                            r"\b(?:well[- ]controlled|controlled|stable|compensated|"
-                            r"currently active|ongoing)\b",
+                            r"\b(?:well[- ]controlled|controlled|uncontrolled|stable|"
+                            r"compensated|currently active|ongoing|under treatment|"
+                            r"on (?:long[- ]term )?(?:medication|therapy|treatment)|"
+                            r"noncompliant with (?:medications?|treatment))\b",
                             window,
                         ))
 
