@@ -67,7 +67,7 @@ python evaluation\run_challenge_evaluation.py `
   --output $env:TEMP\mirai-challenge-report.json
 python evaluation\run_synthetic_smoke.py > $env:TEMP\mirai-smoke-report.json
 python evaluation\sow_report.py `
-  --queue mirai_dataset_preparation_pack\data\external\mtsamples\annotations\annotation_template_100.jsonl `
+  --queue .dataset_working\annotations\annotation_template_100.jsonl `
   --challenge-report $env:TEMP\mirai-challenge-report.json `
   --smoke-report $env:TEMP\mirai-smoke-report.json `
   --output $env:TEMP\mirai-sow-report.json
