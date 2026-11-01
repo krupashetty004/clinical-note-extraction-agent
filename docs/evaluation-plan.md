@@ -31,6 +31,9 @@ Evaluate whether the proposed system:
 - The generated synthetic reference fixtures are deterministic regression data, not independent clinical labels. AI-generated annotations must retain AI provenance and are not eligible as clinical gold. Neither source satisfies the SOW's manually labelled gold-standard requirement.
 - Separate development/prompt-iteration data from the independent final reporting set. Do not claim independent performance on repeatedly tuned examples.
 
+### ICD-10-CM reference-data prerequisite
+The checked-in `data/reference/icd10cm-codes-2027.txt` is currently empty on the feature branch. ICD-10-CM retrieval and coding metrics must remain untested/NOT EVALUATED until an approved, populated reference table is supplied and successfully imported. Synthetic generator fixtures omit code references that are not present in the local table; they must not substitute placeholder descriptions.
+
 ### Systems compared
 - **Naive single-prompt baseline** using the same approved note set and comparable output definition.
 - **Proposed agent** including structured extraction, retrieval, independent verification, reconciliation, bounded retries, abstention, and review controls.
