@@ -98,6 +98,40 @@ class TestLocalClinicalExtractionProvider(PureTestCase):
         entities = [i["entity"].lower() for i in result["items"]]
         self.assertTrue(any("hypertension" in e for e in entities))
 
+    def test_extracts_prediabetes_as_distinct_diagnosis(self):
+        note = "Past history: prediabetes."
+        result = self.provider.extract(note)
+        matches = [
+            item for item in result["items"]
+            if item["category"] == "diagnosis"
+            and item["entity"].casefold() == "prediabetes"
+        ]
+
+        self.assertEqual(len(matches), 1)
+        item = matches[0]
+        self.assertEqual(item["evidence_text"], "prediabetes")
+        self.assertEqual(
+            note[item["start_offset"]:item["end_offset"]],
+            "prediabetes",
+        )
+
+    def test_extracts_plural_urinary_tract_infections(self):
+        note = "Past history: Recurrent urinary tract infections."
+        result = self.provider.extract(note)
+        matches = [
+            item for item in result["items"]
+            if item["category"] == "diagnosis"
+            and item["entity"].casefold() == "urinary tract infections"
+        ]
+
+        self.assertEqual(len(matches), 1)
+        item = matches[0]
+        self.assertEqual(item["evidence_text"], "urinary tract infections")
+        self.assertEqual(
+            note[item["start_offset"]:item["end_offset"]],
+            "urinary tract infections",
+        )
+
     def test_extracts_type_2_diabetes_mellitus(self):
         note = "Diagnosis: type 2 diabetes mellitus with peripheral neuropathy."
         result = self.provider.extract(note)
