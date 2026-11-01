@@ -6,6 +6,7 @@ on:
       - main
       - local/ai-benchmark-pipeline
       - feature/mirai-completion-2026-11
+      - feature/coding-safety-stage-11
   pull_request:
     branches:
       - main
