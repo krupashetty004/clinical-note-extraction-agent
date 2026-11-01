@@ -229,12 +229,52 @@ class LocalClinicalExtractionProvider:
                     status = None
 
                     if category == "diagnosis":
-                        if any(w in historical_context for w in ["history of", "hx of", "past history", "prior"]):
-                            status = "historical"
-                        elif any(w in preceding_context for w in ["no evidence of", "ruled out", "negative for", "denies"]):
+                        following_context = text_lower[end:context_end]
+
+                        negated_before = re.search(
+                            r"\\b(?:no(?:\\s+evidence\\s+of)?|denies?|denied|"
+                            r"negative\\s+for|without|absence\\s+of|ruled\\s+out|not)\\s*$",
+                            preceding_context,
+                        )
+                        negated_after = re.match(
+                            r"^\\s*,?\\s*(?:(?:which|that)\\s+)?"
+                            r"(?:(?:is|was|has been|had been)\\s+)?"
+                            r"(?:ruled\\s+out|excluded|not present|negative for)\\b",
+                            following_context,
+                        )
+
+                        suspected_before = any(
+                            cue in preceding_context
+                            for cue in [
+                                "possible",
+                                "probable",
+                                "rule out",
+                                "suspected",
+                                "question of",
+                                "concern for",
+                            ]
+                        )
+                        suspected_after = re.match(
+                            r"^\\s*,?\\s*(?:(?:which|that)\\s+)?"
+                            r"(?:(?:is|was|has been|had been)\\s+)?"
+                            r"(?:possible|probable|suspected|not excluded)\\b",
+                            following_context,
+                        )
+
+                        if negated_before or negated_after:
                             status = "ruled_out"
-                        elif any(w in preceding_context for w in ["possible", "probable", "rule out", "suspected", "question of"]):
+                        elif suspected_before or suspected_after:
                             status = "suspected"
+                        elif any(
+                            cue in historical_context
+                            for cue in [
+                                "history of",
+                                "hx of",
+                                "past history",
+                                "prior",
+                            ]
+                        ):
+                            status = "historical"
                         else:
                             status = "active"
 
