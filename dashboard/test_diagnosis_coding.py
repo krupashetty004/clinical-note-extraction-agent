@@ -182,6 +182,102 @@ class DiagnosisCodingIntegrationTests(TestCase):
         self.assertEqual(coding.status, "candidates_found")
         self.assertEqual(coding.candidates[0].code, "R053")
 
+    def test_prefers_unspecified_hyperlipidemia_without_mixed_evidence(self):
+        note = "Assessment: Hyperlipidemia is stable."
+        payload = self.make_payload(
+            note,
+            entity="Hyperlipidemia",
+            evidence="Hyperlipidemia",
+        )
+        candidates = (
+            ICD10Candidate("E782", "Mixed hyperlipidemia", 1.0),
+            ICD10Candidate("E785", "Hyperlipidemia, unspecified", 0.9),
+        )
+
+        with patch(
+            "dashboard.extraction.diagnosis_coding.search_hybrid_icd10",
+            return_value=ICD10LookupResult(
+                query="Hyperlipidemia",
+                status="candidates_found",
+                candidates=candidates,
+            ),
+        ):
+            result = code_diagnoses(payload, note)
+
+        coding = result.diagnoses[0].coding
+        self.assertEqual(coding.status, "candidates_found")
+        self.assertEqual(
+            [candidate.code for candidate in coding.candidates],
+            ["E785"],
+        )
+
+    def test_prefers_unspecified_heart_failure_without_rheumatic_evidence(self):
+        note = "Assessment: Congestive heart failure, compensated."
+        payload = self.make_payload(
+            note,
+            entity="Congestive heart failure",
+            evidence="Congestive heart failure",
+        )
+        candidates = (
+            ICD10Candidate("I0981", "Rheumatic heart failure", 1.0),
+            ICD10Candidate("I509", "Heart failure, unspecified", 0.9),
+        )
+
+        with patch(
+            "dashboard.extraction.diagnosis_coding.search_hybrid_icd10",
+            return_value=ICD10LookupResult(
+                query="Congestive heart failure",
+                status="candidates_found",
+                candidates=candidates,
+            ),
+        ):
+            result = code_diagnoses(payload, note)
+
+        coding = result.diagnoses[0].coding
+        self.assertEqual(coding.status, "candidates_found")
+        self.assertEqual(
+            [candidate.code for candidate in coding.candidates],
+            ["I509"],
+        )
+
+    def test_abstains_on_coronary_candidate_with_unsupported_vessel_or_angina_details(self):
+        note = "Assessment: Coronary artery disease."
+        payload = self.make_payload(
+            note,
+            entity="Coronary artery disease",
+            evidence="Coronary artery disease",
+        )
+        candidates = (
+            ICD10Candidate(
+                "I2510",
+                "Atherosclerotic heart disease of native coronary artery without angina pectoris",
+                1.0,
+            ),
+            ICD10Candidate(
+                "I25110",
+                "Atherosclerotic heart disease of native coronary artery with unstable angina pectoris",
+                0.95,
+            ),
+        )
+
+        with patch(
+            "dashboard.extraction.diagnosis_coding.search_hybrid_icd10",
+            return_value=ICD10LookupResult(
+                query="Coronary artery disease",
+                status="candidates_found",
+                candidates=candidates,
+            ),
+        ):
+            result = code_diagnoses(payload, note)
+
+        coding = result.diagnoses[0].coding
+        self.assertEqual(coding.status, "no_confident_match")
+        self.assertEqual(
+            coding.candidate_disposition,
+            "weak_matches_for_review",
+        )
+        self.assertIn("specificity", coding.reason)
+
     def test_preserves_historical_status(self):
         note = (
             "History: Type 2 diabetes mellitus without complications."
