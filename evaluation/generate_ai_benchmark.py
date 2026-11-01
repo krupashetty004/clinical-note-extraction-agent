@@ -20,7 +20,6 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dashboard.extraction.dataset import (
-    ANNOTATION_QUEUE_PATH,
     DatasetRecord,
     REQUIRED_RECORD_FIELDS,
     load_jsonl,
@@ -37,10 +36,9 @@ QUEUE_CATEGORY_MAP = {
     "allergy": "allergies",
     "vital_sign": "vital_signs",
 }
-DEFAULT_CASES_PATH = Path("evaluation/ai_benchmark_cases.jsonl")
-DEFAULT_QUEUE_PATH = Path(
-    "mirai_dataset_preparation_pack/data/external/mtsamples/annotations/ai_benchmark_annotations.jsonl"
-)
+DEFAULT_INPUT_PATH = Path(".dataset_working/synthetic/ai_input_100.jsonl")
+DEFAULT_CASES_PATH = Path(".dataset_working/ai_benchmark/cases.jsonl")
+DEFAULT_QUEUE_PATH = Path(".dataset_working/ai_benchmark/annotations.jsonl")
 
 
 def is_synthetic_record(record: DatasetRecord) -> bool:
@@ -359,7 +357,7 @@ def _safe_failure_diagnostics(exc: Exception) -> dict[str, str]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=ANNOTATION_QUEUE_PATH)
+    parser.add_argument("--input", type=Path, default=DEFAULT_INPUT_PATH)
     parser.add_argument("--output", type=Path, default=DEFAULT_CASES_PATH)
     parser.add_argument("--queue-output", type=Path, default=DEFAULT_QUEUE_PATH)
     parser.add_argument("--model", help="Optional Groq model ID; otherwise use GROQ_MODEL")
