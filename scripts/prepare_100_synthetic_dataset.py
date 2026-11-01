@@ -673,12 +673,23 @@ def generate_100_records() -> list[dict[str, Any]]:
         seen_codes = set()
 
         for term, status, code in diag_specs:
-            item = build_entity_span(note_text, term, "diagnoses", status, code)
+            # Do not attach a code or placeholder description unless the
+            # configured ICD-10-CM reference table actually contains it.
+            verified_code = code if code in ICD_REF else None
+            item = build_entity_span(
+                note_text, term, "diagnoses", status, verified_code
+            )
             diagnoses.append(item)
-            if code and code not in seen_codes and status != "ruled_out":
-                seen_codes.add(code)
-                desc = ICD_REF.get(code, "Unspecified")
-                icd_codes.append({"code": code, "description": desc})
+            if (
+                verified_code
+                and verified_code not in seen_codes
+                and status != "ruled_out"
+            ):
+                seen_codes.add(verified_code)
+                icd_codes.append({
+                    "code": verified_code,
+                    "description": ICD_REF[verified_code],
+                })
 
         medications = []
         for term, status in med_specs:
