@@ -229,4 +229,5 @@ __marimo__/
 
 # Local MTSamples source data and generated note-level outputs (never commit)
 mirai_dataset_preparation_pack/data/external/mtsamples/raw/*.csv
+mirai_dataset_preparation_pack/data/external/mtsamples/annotations/*.jsonl
 .dataset_working/
