@@ -25,7 +25,7 @@ def _tokens(text: str) -> set[str]:
 # Dictionary of known clinical entity terms
 CLINICAL_TERMS: dict[str, list[str]] = {
     "diagnoses": [
-        "type 2 diabetes mellitus", "diabetes mellitus", "type 1 diabetes mellitus", "diabetes",
+        "type 2 diabetes mellitus", "diabetes mellitus", "type 1 diabetes mellitus", "prediabetes", "diabetes",
         "essential hypertension", "hypertension", "hyperlipidemia", "hypercholesterolemia",
         "coronary artery disease", "atrial fibrillation", "congestive heart failure", "heart failure",
         "myocardial infarction", "angina pectoris", "musculoskeletal injury", "chest pain",
@@ -35,7 +35,7 @@ CLINICAL_TERMS: dict[str, list[str]] = {
         "carpal tunnel syndrome", "scoliosis", "lumbar radiculopathy", "herniated disc",
         "gastroesophageal reflux disease", "gerd", "gastritis", "peptic ulcer disease",
         "diverticulitis", "appendicitis", "cholecystitis", "cholelithiasis", "pancreatitis",
-        "chronic kidney disease", "acute kidney injury", "urinary tract infection", "hematuria",
+        "chronic kidney disease", "acute kidney injury", "urinary tract infection", "urinary tract infections", "hematuria",
         "benign prostatic hyperplasia", "nephrolithiasis", "kidney stones",
         "migraine", "headache", "epilepsy", "seizure disorder", "stroke", "cerebrovascular accident",
         "transient ischemic attack", "multiple sclerosis", "parkinson's disease", "neuropathy",
