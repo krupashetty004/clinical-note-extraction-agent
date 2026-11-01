@@ -659,6 +659,198 @@ def generate_100_records() -> list[dict[str, Any]]:
         96: {'procs': ['intravenous normal saline hydration']},
         98: {'procs': []},
     }
+
+    # Offline review pass: checked against source-note text in ten specialty
+    # batches. These remain synthetic reference fixtures, not clinical gold.
+    REVIEW_CORRECTIONS = {
+        # Cardiology (1-10)
+        2: {"meds": [("furosemide", "current"), ("carvedilol", "current"), ("aspirin", "current")]},
+        4: {"procs": ["stent placement", "lipid panel"]},
+        5: {"procs": ["coronary angiography", "stress testing"]},
+        6: {
+            "diags": [("ischemic cardiomyopathy", "active", None), ("heart failure", "active", "I509")],
+            "meds": [("torsemide", "current"), ("lisinopril", "current"), ("furosemide", "newly_prescribed")],
+            "procs": ["echocardiogram"],
+        },
+        7: {
+            "diags": [("hypertension", "active", "I10"), ("hypertensive urgency", "active", None), ("stroke", "ruled_out", "I639")],
+            "meds": [("hydrochlorothiazide", "newly_prescribed"), ("labetalol", "newly_prescribed")],
+            "procs": [],
+        },
+        9: {"meds": [("diltiazem", "current"), ("warfarin", "current"), ("enoxaparin", "newly_prescribed")]},
+
+        # Neurology (11-20)
+        13: {"procs": ["physical therapy", "carotid ultrasound"]},
+        14: {"meds": [("dimethyl fumarate", "current"), ("vitamin D3", "current")]},
+        15: {"procs": ["physical therapy"]},
+        17: {
+            "diags": [
+                ("transient ischemic attack", "suspected", "G459"),
+                ("cerebral infarction", "ruled_out", "I639"),
+                ("hypertension", "active", "I10"),
+                ("hyperlipidemia", "active", None),
+            ],
+            "procs": ["MRI brain", "magnetic resonance angiography"],
+        },
+        18: {
+            "meds": [("metformin", "current"), ("glipizide", "current"), ("gabapentin", "newly_prescribed")],
+            "procs": [],
+        },
+
+        # Pulmonology (21-30)
+        21: {"meds": [("fluticasone-salmeterol", "current"), ("albuterol", "current"), ("prednisone", "newly_prescribed")]},
+        22: {"meds": [("tiotropium", "current"), ("budesonide-formoterol", "current")]},
+        23: {"meds": [("amoxicillin-clavulanate", "current"), ("amoxicillin", "current"), ("albuterol", "current")]},
+        24: {"procs": ["high-resolution chest CT", "PET scan", "bronchoscopy", "biopsy"]},
+        25: {
+            "meds": [("cetirizine", "current"), ("fluticasone", "newly_prescribed"), ("montelukast", "newly_prescribed")],
+            "allergies": ["tree pollen", "grass", "cat dander"],
+            "procs": [],
+        },
+        26: {"meds": [("omeprazole", "newly_prescribed")]},
+        27: {"meds": [("pirfenidone", "current"), ("lansoprazole", "current")]},
+        28: {"procs": []},
+        30: {
+            "diags": [
+                ("asbestos-related pleural disease", "active", None),
+                ("pneumoconiosis", "suspected", None),
+                ("hypertension", "active", "I10"),
+            ],
+            "procs": ["high-resolution CT chest", "pulmonary function testing"],
+        },
+
+        # Endocrinology (31-40)
+        31: {
+            "meds": [("metformin", "current"), ("glipizide", "current"), ("atorvastatin", "current")],
+            "procs": ["HbA1c", "comprehensive metabolic panel", "urine microalbumin"],
+        },
+        32: {
+            "diags": [("Hashimoto thyroiditis", "active", None), ("hypothyroidism", "active", "E039")],
+            "procs": ["TSH", "free T4"],
+        },
+        33: {
+            "diags": [("type 1 diabetes mellitus", "active", "E109"), ("hypoglycemia", "active", None)],
+            "meds": [("insulin lispro", "current")],
+        },
+        34: {
+            "diags": [
+                ("morbid obesity", "active", "E6601"),
+                ("prediabetes", "active", None),
+                ("hypertension", "active", "I10"),
+                ("type 2 diabetes mellitus", "ruled_out", "E119"),
+            ],
+            "meds": [("lisinopril", "current")],
+            "procs": ["fasting glucose"],
+        },
+        35: {
+            "diags": [("hyperthyroidism", "suspected", "E0590"), ("Graves disease", "suspected", None)],
+            "procs": ["thyroid antibodies", "free T3/T4", "radioactive iodine uptake scan"],
+        },
+        36: {
+            "meds": [("calcium", "current"), ("vitamin D3", "current"), ("alendronate", "newly_prescribed")],
+            "diags": [("osteoporosis", "active", "M810"), ("Colles fracture", "historical", None)],
+        },
+        37: {
+            "diags": [("chronic kidney disease", "active", "N189"), ("type 2 diabetes mellitus", "active", "E119")],
+            "meds": [("metformin", "current"), ("glimepiride", "current"), ("lisinopril", "newly_prescribed")],
+            "procs": ["spot urine albumin-to-creatinine ratio", "serum creatinine"],
+        },
+        38: {"meds": [("hydrocortisone", "current"), ("fludrocortisone", "current")], "procs": []},
+        39: {"procs": ["intact PTH", "24-hour urine calcium", "renal ultrasound"]},
+        40: {
+            "diags": [("gestational diabetes mellitus", "historical", None), ("type 2 diabetes mellitus", "ruled_out", "E119")],
+            "procs": ["oral glucose tolerance test"],
+        },
+
+        # Gastroenterology (41-50)
+        42: {"procs": []},
+        43: {"diags": [("diverticulitis", "historical", "K5792")]},
+        47: {
+            "diags": [
+                ("inflammatory bowel disease", "suspected", None),
+                ("diarrhea", "active", "R197"),
+                ("abdominal pain", "active", "R109"),
+                ("fatigue", "active", "R5383"),
+            ],
+        },
+        48: {"diags": [("colon polyps", "active", None)], "procs": ["colonoscopy", "polypectomy"]},
+        49: {"meds": [("multivitamin", "current")], "allergies": ["gluten"], "procs": ["anti-tTG IgA"]},
+        50: {"meds": [("spironolactone", "current"), ("nadolol", "current")], "procs": ["liver ultrasound", "alpha-fetoprotein"]},
+
+        # Orthopedics (51-60)
+        53: {
+            "meds": [("gabapentin", "current"), ("cyclobenzaprine", "current")],
+            "procs": ["lumbar spine MRI", "epidural steroid injection"],
+        },
+        54: {"meds": [("methotrexate", "current"), ("folic acid", "current"), ("prednisone", "current")]},
+        55: {"diags": [], "procs": ["arthroscopy", "rotator cuff repair", "physical therapy"]},
+        58: {"meds": [("meloxicam", "current"), ("triamcinolone", "current"), ("lidocaine", "current")]},
+        59: {"procs": ["cervical spine MRI", "physical therapy"]},
+        60: {"meds": [("calcium", "current"), ("vitamin D", "current")], "procs": ["x-ray", "cast removed"]},
+
+        # Dermatology (61-70)
+        61: {"procs": []},
+        68: {"meds": [("ketoconazole", "current"), ("hydrocortisone", "newly_prescribed")]},
+        70: {"allergies": ["formaldehyde", "fragrances"]},
+
+        # Family Medicine (71-80)
+        71: {"procs": ["fasting blood work", "mammogram", "colonoscopy"]},
+        80: {"diags": [("tobacco use disorder", "active", None), ("hypertension", "active", "I10")]},
+
+        # Oncology (81-90)
+        81: {
+            "meds": [("cyclophosphamide", "current"), ("doxorubicin", "current"), ("ondansetron", "current")],
+            "procs": ["lumpectomy", "sentinel lymph node biopsy", "radiation therapy"],
+        },
+        85: {"procs": ["liver function panels", "thyroid function panels"]},
+        86: {
+            "diags": [("pancreatic cancer", "active", None), ("abdominal pain", "active", "R109")],
+            "meds": [("morphine", "current"), ("senna", "current"), ("ondansetron", "newly_prescribed")],
+            "procs": [],
+        },
+        88: {
+            "diags": [("febrile neutropenia", "historical", None)],
+            "meds": [("cefepime", "discontinued"), ("filgrastim", "current")],
+            "procs": ["blood cultures", "CBC with differential"],
+        },
+        89: {"meds": [("lenalidomide", "current"), ("dexamethasone", "current"), ("zoledronic acid", "current")]},
+
+        # Internal Medicine (91-100)
+        91: {"procs": ["renal panel", "HbA1c"]},
+        92: {"procs": []},
+        93: {
+            "diags": [
+                ("hypothyroidism", "active", "E039"),
+                ("fatigue", "active", "R5383"),
+                ("unintentional weight loss", "active", None),
+            ],
+            "procs": ["TSH", "free T4", "CT scan"],
+        },
+        94: {"procs": []},
+        95: {"procs": ["ESR", "CRP", "anti-CCP"]},
+        97: {
+            "diags": [("hypertension", "active", "I10"), ("renal artery stenosis", "suspected", None)],
+            "meds": [
+                ("lisinopril", "current"),
+                ("amlodipine", "current"),
+                ("chlorthalidone", "current"),
+                ("spironolactone", "current"),
+            ],
+        },
+        98: {"procs": []},
+        99: {
+            "diags": [
+                ("obesity", "active", "E669"),
+                ("type 2 diabetes mellitus", "active", "E119"),
+                ("hyperlipidemia", "active", "E785"),
+                ("nonalcoholic fatty liver disease", "active", None),
+            ],
+        },
+        100: {"procs": ["complement levels", "anti-dsDNA"]},
+    }
+    for record_index, changes in REVIEW_CORRECTIONS.items():
+        corrections.setdefault(record_index, {}).update(changes)
+
     for idx, (specialty, title, note_text, diag_specs, med_specs, proc_specs, allergy_specs, vital_specs, needs_review) in enumerate(all_cases, start=1):
         if idx in corrections:
             c = corrections[idx]
@@ -719,14 +911,17 @@ def generate_100_records() -> list[dict[str, Any]]:
             "annotation_status": "complete",
             "adjudication_status": "not_reviewed",
             "reviewer_decision": "pending",
-            "reviewer_comment": "Synthetic reference fixture generated from fixed case definitions; not clinically reviewed.",
+            "reviewer_comment": "Synthetic reference fixture reviewed offline in ten batches for source evidence, category and status consistency; not clinician-adjudicated.",
             "expected_needs_review": needs_review,
             "clinical_performance_eligible": False,
             "gold_evaluation_ready": False,
             "label_source": "synthetic_reference_fixture",
             "label_provenance": {
                 "fixture_version": "mirai-synthetic-reference-v1",
-                "generation_method": "authored_synthetic_case_definitions",
+                "generation_method": "authored_synthetic_case_definitions_with_offline_batch_review",
+                "review_method": "offline_source_text_audit",
+                "review_batch_count": 10,
+                "review_batch_size": 10,
                 "annotation_guidelines": "mirai-entity-taxonomy-v1",
                 "is_human_gold": False,
                 "clinical_review_status": "not_reviewed",
